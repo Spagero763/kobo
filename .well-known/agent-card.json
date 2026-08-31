@@ -1,0 +1,43 @@
+{
+  "name": "Kobo",
+  "description": "Sends naira onchain without holding CELO. Moves cNGN on Celo mainnet with gas paid in the stablecoin itself, for people and for agents.",
+  "version": "0.1.0",
+  "url": "https://github.com/Spagero763/kobo",
+  "provider": {
+    "organization": "Kobo",
+    "url": "https://github.com/Spagero763/kobo"
+  },
+  "capabilities": {
+    "streaming": false,
+    "pushNotifications": false,
+    "stateTransitionHistory": false
+  },
+  "defaultInputModes": ["application/json"],
+  "defaultOutputModes": ["application/json"],
+  "skills": [
+    {
+      "id": "quote",
+      "name": "Quote a naira transfer",
+      "description": "Returns the amount that will arrive, the fee, and the fee currency, before anything is signed.",
+      "tags": ["payments", "naira", "cngn", "celo"]
+    },
+    {
+      "id": "send",
+      "name": "Send naira",
+      "description": "Transfers cNGN on Celo mainnet. Gas is paid in the stablecoin, so the sender never needs CELO.",
+      "tags": ["payments", "naira", "cngn", "celo", "fee-abstraction"]
+    }
+  ],
+  "registrations": [
+    {
+      "agentId": null,
+      "agentAddress": "0xE23c44Dd4a51456786c6681cFE928AAcfa00d619",
+      "chainId": 42220,
+      "registry": "0x8004A169FB4a3325136EB29fA0ceB6D2e539a432"
+    }
+  ],
+  "trust": {
+    "proofOfPersonhood": "self",
+    "attribution": "erc-8021"
+  }
+}
