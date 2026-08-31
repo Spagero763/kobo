@@ -1,0 +1,14 @@
+node_modules/
+dist/
+.env
+.env.local
+*.log
+.DS_Store
+
+# runtime state and anything key-like
+data/
+.self/
+*.key
+*.pem
+
+.vercel
