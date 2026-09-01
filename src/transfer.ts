@@ -15,12 +15,11 @@ export interface Quote {
   sufficient: boolean;
 }
 
-const GAS_LIMIT = 120_000n;
-
-// What a tagged ERC-20 transfer actually burns. The limit above is headroom so
-// a send cannot fail for want of gas; quoting against it would overstate the
-// fee roughly fourfold, and the sender is owed the real number.
-const GAS_USED = 62_000n;
+// Measured on mainnet: a tagged transfer paying its fee in NGNm burns ~98k,
+// well above a plain ERC-20 transfer, because the fee itself moves as token
+// transfers. The limit is headroom over that so a send cannot run out.
+const GAS_LIMIT = 200_000n;
+const GAS_USED = 100_000n;
 
 export async function balanceOf(address: `0x${string}`): Promise<bigint> {
   return publicClient.readContract({
@@ -101,6 +100,9 @@ export async function send(to: `0x${string}`, amount: string): Promise<string> {
     chain: wallet.chain,
     ...(await feeParams(NGNM, GAS_LIMIT)),
   } as Parameters<typeof wallet.sendTransaction>[0]);
-  await publicClient.waitForTransactionReceipt({ hash, timeout: 120_000 });
+  const receipt = await publicClient.waitForTransactionReceipt({ hash, timeout: 120_000 });
+  // A mined transaction is not a successful one. Without this a revert returns
+  // a hash and reads as a completed transfer.
+  if (receipt.status !== "success") throw new Error("the transfer reverted onchain");
   return hash;
 }
