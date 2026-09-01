@@ -1,4 +1,4 @@
-{
+﻿{
   "name": "kobo",
   "version": "0.1.0",
   "license": "MIT",
@@ -12,7 +12,8 @@
     "dev": "tsx watch src/index.ts",
     "start": "node dist/src/index.js",
     "build": "tsc",
-    "register": "tsx scripts/register-8004.ts"
+    "register": "tsx scripts/register-8004.ts",
+    "naira": "tsx scripts/get-naira.ts"
   },
   "dependencies": {
     "@celo/attribution-tags": "^0.3.0",
