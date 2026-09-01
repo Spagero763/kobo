@@ -1,8 +1,8 @@
-﻿{
+{
   "name": "kobo",
   "version": "0.1.0",
   "license": "MIT",
-  "description": "Send naira onchain without holding CELO. cNGN payments on Celo with fee abstraction, for people and for agents.",
+  "description": "Send naira onchain without holding CELO. NGNm payments on Celo with fee abstraction, for people and for agents.",
   "type": "module",
   "repository": {
     "type": "git",
