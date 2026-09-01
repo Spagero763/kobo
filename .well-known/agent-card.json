@@ -30,7 +30,7 @@
   ],
   "registrations": [
     {
-      "agentId": null,
+      "agentId": 9802,
       "agentAddress": "0xE23c44Dd4a51456786c6681cFE928AAcfa00d619",
       "chainId": 42220,
       "registry": "0x8004A169FB4a3325136EB29fA0ceB6D2e539a432"
