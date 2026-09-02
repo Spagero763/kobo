@@ -1,0 +1,50 @@
+{
+  "name": "Kobo",
+  "propertyType": "miniapp",
+  "propertyUrl": "https://kobo-gamma.vercel.app",
+  "budget": 12,
+  "skillFilters": [],
+  "locationFilters": [],
+  "questions": [
+    {
+      "id": "q1",
+      "text": "Open the app cold, as someone who has never used it. Before connecting anything, what do you believe this product does, and what does it cost to use? Quote the exact words that told you, or say what was missing.",
+      "type": "freeform"
+    },
+    {
+      "id": "q2",
+      "text": "The core claim is that you can send Nigerian naira without holding CELO, because the network fee is paid in naira. Where is that claim made, and at what point in the flow would you actually believe it? If you never believed it, say where you stopped.",
+      "type": "freeform"
+    },
+    {
+      "id": "q3",
+      "text": "Enter a recipient address and an amount, but do not sign. Describe exactly what the app tells you will happen: what arrives, what the fee is, what leaves your balance. Is anything ambiguous, missing, or stated in a unit you would have to convert yourself?",
+      "type": "freeform"
+    },
+    {
+      "id": "q4",
+      "text": "Try to break the form. Bad address, zero, a negative number, more than your balance, letters in the amount field. For each, quote the message you got back and say whether it told you what to do next or merely that something was wrong.",
+      "type": "freeform"
+    },
+    {
+      "id": "q5",
+      "text": "Without a wallet available, what does the app do? Is the path forward obvious, and does it explain what kind of wallet is needed and why? Quote what you saw.",
+      "type": "freeform"
+    },
+    {
+      "id": "q6",
+      "text": "Call the API directly: GET /v1/quote, GET /v1/balance/<address>, GET /v1/currencies, GET /healthz. Are the status codes, field names and error shapes what you would expect as a machine consumer? Name any field whose meaning you had to guess.",
+      "type": "freeform"
+    },
+    {
+      "id": "q7",
+      "text": "The app also runs rotating savings circles, where members pay each round's recipient directly and a contract records only membership. From what you can see in the interface, is that model explained clearly enough that you would trust it with money? What is the single biggest unanswered question?",
+      "type": "freeform"
+    },
+    {
+      "id": "q8",
+      "text": "Name the one change that would most improve this product, and say concretely what you would do instead of what is there now. Do not list several; pick the one you would fix first and explain why it beats the others.",
+      "type": "freeform"
+    }
+  ]
+}
