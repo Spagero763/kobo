@@ -1,11 +1,5 @@
 import "dotenv/config";
 
-function required(name: string): string {
-  const v = process.env[name];
-  if (!v) throw new Error(`Missing ${name} in .env`);
-  return v;
-}
-
 export const CHAIN_ID = 42220;
 
 export const IDENTITY_REGISTRY = "0x8004A169FB4a3325136EB29fA0ceB6D2e539a432" as const;
@@ -64,7 +58,12 @@ function privateKey(): `0x${string}` | "" {
 }
 
 export const config = {
-  agentAddress: required("AGENT_ADDRESS") as `0x${string}`,
+  /**
+   * Only the scripts sign anything. The web app builds transactions for a
+   * user's own wallet, so a missing agent address must not take the whole site
+   * down: it is checked where it is used, not at import time.
+   */
+  agentAddress: (process.env.AGENT_ADDRESS ?? "") as `0x${string}`,
   agentPrivateKey: privateKey(),
   attributionTag: process.env.ATTRIBUTION_TAG ?? "",
   celoRpc: process.env.CELO_RPC ?? "https://forno.celo.org",

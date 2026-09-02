@@ -32,6 +32,7 @@ const AGENT_URI =
 async function main() {
   if (!config.agentPrivateKey) throw new Error("AGENT_PRIVATE_KEY is not set in .env");
 
+  if (!config.agentAddress) throw new Error("AGENT_ADDRESS is not set in .env");
   const account = privateKeyToAccount(config.agentPrivateKey as `0x${string}`);
   if (account.address.toLowerCase() !== config.agentAddress.toLowerCase()) {
     throw new Error(`Key belongs to ${account.address}, but AGENT_ADDRESS is ${config.agentAddress}`);
