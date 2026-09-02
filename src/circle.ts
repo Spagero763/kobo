@@ -2,8 +2,11 @@ import { encodeFunctionData, formatUnits, getAddress, keccak256, parseAbiItem, p
 import { CIRCLES, CIRCLES_DEPLOYED_AT, NGNM } from "./config.js";
 import { publicClient, readFresh, tag } from "./chain.js";
 
-// Public nodes cap how many blocks one eth_getLogs may span.
-const LOG_WINDOW = 8_000n;
+// Public nodes cap how many blocks one eth_getLogs may span, and they disagree
+// about the limit. Start optimistic and shrink on rejection rather than pinning
+// a number that breaks the moment a node is swapped in.
+const LOG_WINDOW_START = 4_000n;
+const LOG_WINDOW_MIN = 250n;
 
 /** Celo produces roughly a block a second, so a timestamp maps to a block. */
 function blockAt(timestamp: number): bigint {
@@ -11,15 +14,32 @@ function blockAt(timestamp: number): bigint {
   return CIRCLES_DEPLOYED_AT.block + delta;
 }
 
+const rangeTooLarge = (e: unknown) =>
+  /range is too large|block range|too many blocks|limit exceeded|query returned more than/i.test(
+    String((e as Error)?.message ?? e),
+  );
+
 async function logsInRange<T>(
   from: bigint,
   to: bigint,
   query: (fromBlock: bigint, toBlock: bigint) => Promise<T[]>,
 ): Promise<T[]> {
   const out: T[] = [];
-  for (let start = from; start <= to; start += LOG_WINDOW) {
-    const end = start + LOG_WINDOW - 1n > to ? to : start + LOG_WINDOW - 1n;
-    out.push(...(await query(start, end)));
+  let window = LOG_WINDOW_START;
+  let start = from;
+
+  while (start <= to) {
+    const end = start + window - 1n > to ? to : start + window - 1n;
+    try {
+      out.push(...(await query(start, end)));
+      start = end + 1n;
+    } catch (e) {
+      if (rangeTooLarge(e) && window > LOG_WINDOW_MIN) {
+        window /= 2n;
+        continue;
+      }
+      throw e;
+    }
   }
   return out;
 }
