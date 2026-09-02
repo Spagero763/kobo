@@ -11,6 +11,20 @@ export const CHAIN_ID = 42220;
 export const IDENTITY_REGISTRY = "0x8004A169FB4a3325136EB29fA0ceB6D2e539a432" as const;
 
 /**
+ * Savings circle membership registry. Holds no tokens and has no owner: it
+ * records who is in a circle and whose turn it is, nothing more. Contributions
+ * move directly between members and never touch it.
+ */
+export const CIRCLES = "0xce0b075d9b2ba71f4c8097e3a43e7d1240505173" as const;
+
+/**
+ * Block and timestamp the registry was deployed at. Log queries start here
+ * rather than from genesis: Celo produces a block a second, so "earliest" is
+ * millions of blocks and public nodes refuse the range outright.
+ */
+export const CIRCLES_DEPLOYED_AT = { block: 76419038n, timestamp: 1788319796 } as const;
+
+/**
  * Mento Nigerian Naira. 18 decimals, so it is allowlisted directly and can be
  * passed as feeCurrency by its own address. Tokens with other decimals, USDC and
  * USD₮ among them, are allowlisted through an adapter and their own token

@@ -6,14 +6,14 @@ import { canPayGasWith, feeCurrencyAllowlist } from "./chain.js";
 import { balanceOf, buildTransfer, quote } from "./transfer.js";
 import { nairaRate } from "./swap.js";
 import {
-  createCircle,
-  duesFor,
+  buildCreate,
+  buildJoin,
+  buildStart,
+  contributions,
   getCircle,
-  join as joinCircle,
-  listCircles,
-  recordContribution,
+  idFor,
+  saltFor,
   standings,
-  start,
 } from "./circle.js";
 
 export function createApp() {
@@ -98,86 +98,87 @@ export function createApp() {
     }
   });
 
-  const shape = (c: ReturnType<typeof getCircle>, viewer?: string) => ({
-    id: c.id,
-    name: c.name,
-    amount: c.amount,
-    interval: c.interval,
-    organiser: c.organiser,
-    started: Boolean(c.startedAt),
-    members: c.members.map((m) => ({ address: m.address, name: m.name })),
-    pot: (Number(c.amount) * Math.max(0, c.members.length - 1)).toString(),
-    standings: standings(c),
-    dues: viewer ? duesFor(c, viewer) : null,
-  });
+  // Circles live in the registry contract, so state survives restarts and each
+  // member joins with their own signature. These endpoints read the chain and
+  // hand back transactions to sign; the server never acts on anyone's behalf.
 
-  app.post("/v1/circles", (req: Request, res: Response) => {
+  app.get("/v1/circles/:id", async (req: Request, res: Response) => {
     try {
-      const { name, amount, interval, organiser, organiserName } = req.body ?? {};
-      const c = createCircle({ name, amount, interval: Number(interval), organiser, organiserName });
-      res.json(shape(c, organiser));
-    } catch (e) {
-      fail(res, e);
-    }
-  });
-
-  app.get("/v1/circles/:id", (req: Request, res: Response) => {
-    try {
-      const viewer = (req.query.viewer as string) || undefined;
-      res.json(shape(getCircle(req.params.id), viewer));
+      const c = await getCircle(req.params.id);
+      const paid = await contributions(c);
+      res.json({ ...c, standings: standings(c, paid), contributions: paid });
     } catch (e) {
       fail(res, e, 404);
     }
   });
 
-  app.post("/v1/circles/:id/join", (req: Request, res: Response) => {
+  app.post("/v1/circles/build", async (req: Request, res: Response) => {
     try {
-      const { address, name } = req.body ?? {};
-      res.json(shape(joinCircle(req.params.id, address, name), address));
+      const { organiser, name, amount, interval } = req.body ?? {};
+      if (!organiser || !isAddress(organiser)) throw new Error("organiser must be a valid address");
+      if (!name?.trim()) throw new Error("the circle needs a name");
+      if (!(Number(amount) > 0)) throw new Error("amount must be greater than zero");
+      const seconds = Number(interval);
+      if (!Number.isFinite(seconds) || seconds < 60) throw new Error("interval must be at least 60 seconds");
+
+      const salt = saltFor(`${organiser}:${name}:${Date.now()}`);
+      const id = await idFor(organiser, salt);
+      res.json({ id, transaction: buildCreate(salt, String(amount), seconds, name) });
     } catch (e) {
       fail(res, e);
     }
   });
 
-  app.post("/v1/circles/:id/start", (req: Request, res: Response) => {
+  app.post("/v1/circles/:id/build/join", async (req: Request, res: Response) => {
     try {
-      const { by } = req.body ?? {};
-      res.json(shape(start(req.params.id, by), by));
+      const { name } = req.body ?? {};
+      const c = await getCircle(req.params.id);
+      if (c.started) throw new Error("this circle has already started");
+      res.json({ transaction: buildJoin(c.id, String(name ?? "Member")) });
     } catch (e) {
       fail(res, e);
     }
   });
 
-  // The transaction is the truth. This only indexes a transfer that already
-  // happened, so a member cannot mark themselves paid without paying.
-  app.post("/v1/circles/:id/paid", (req: Request, res: Response) => {
+  app.post("/v1/circles/:id/build/start", async (req: Request, res: Response) => {
     try {
-      const { from, txHash } = req.body ?? {};
-      res.json(shape(recordContribution(req.params.id, from, txHash), from));
+      const c = await getCircle(req.params.id);
+      if (c.started) throw new Error("this circle has already started");
+      if (c.members.length < 2) throw new Error("a circle needs at least two members");
+      res.json({ transaction: buildStart(c.id) });
     } catch (e) {
       fail(res, e);
     }
   });
 
-  app.get("/v1/circles/:id/dues/:address", (req: Request, res: Response) => {
+  app.get("/v1/circles/:id/dues/:address", async (req: Request, res: Response) => {
     try {
-      const c = getCircle(req.params.id);
-      const dues = duesFor(c, req.params.address);
+      const address = req.params.address;
+      if (!isAddress(address)) throw new Error("not a valid address");
+      const c = await getCircle(req.params.id);
+      const paid = await contributions(c);
+
+      const isRecipient = c.recipient?.toLowerCase() === address.toLowerCase();
+      const inCircle = c.members.some((m) => m.address.toLowerCase() === address.toLowerCase());
+      const alreadyPaid = paid.some(
+        (p) => p.round === c.round && p.from.toLowerCase() === address.toLowerCase(),
+      );
+      const owed = c.started && inCircle && !isRecipient && !alreadyPaid;
+
       res.json({
-        ...dues,
-        transaction: dues.owed && dues.recipient ? buildTransfer(dues.recipient, c.amount) : null,
+        round: c.round,
+        roundsTotal: c.roundsTotal,
+        recipient: c.recipient,
+        recipientName: c.members[c.round]?.name ?? null,
+        amount: c.amount,
+        owed,
+        paid: alreadyPaid,
+        collecting: isRecipient,
+        endsAt: c.started ? c.startedAt + (c.round + 1) * c.interval : null,
+        transaction: owed && c.recipient ? buildTransfer(c.recipient, c.amount) : null,
       });
     } catch (e) {
       fail(res, e, 404);
-    }
-  });
-
-  app.get("/v1/mine/:address", (req: Request, res: Response) => {
-    try {
-      if (!isAddress(req.params.address)) throw new Error("not a valid address");
-      res.json(listCircles(req.params.address).map((c) => shape(c, req.params.address)));
-    } catch (e) {
-      fail(res, e);
     }
   });
 

@@ -1,180 +1,177 @@
-import { randomBytes } from "node:crypto";
-import { isAddress } from "viem";
+import { encodeFunctionData, formatUnits, getAddress, keccak256, parseAbiItem, parseUnits, toHex } from "viem";
+import { CIRCLES, CIRCLES_DEPLOYED_AT, NGNM } from "./config.js";
+import { publicClient, readFresh, tag } from "./chain.js";
 
-/**
- * A rotating savings circle, the onchain shape of ajo.
- *
- * Kobo never holds the money. It records who owes what to whom this round, and
- * each member pays that round's recipient directly. That keeps every
- * contribution a transfer between two people, which is both the honest design
- * and the only one where the money is never sitting somewhere it can be lost.
- */
+// Public nodes cap how many blocks one eth_getLogs may span.
+const LOG_WINDOW = 8_000n;
 
-export interface Member {
-  address: `0x${string}`;
-  name: string;
-  joinedAt: number;
+/** Celo produces roughly a block a second, so a timestamp maps to a block. */
+function blockAt(timestamp: number): bigint {
+  const delta = BigInt(Math.max(0, timestamp - CIRCLES_DEPLOYED_AT.timestamp));
+  return CIRCLES_DEPLOYED_AT.block + delta;
 }
 
-export interface Contribution {
-  from: `0x${string}`;
-  to: `0x${string}`;
-  round: number;
-  txHash: string;
-  at: number;
+async function logsInRange<T>(
+  from: bigint,
+  to: bigint,
+  query: (fromBlock: bigint, toBlock: bigint) => Promise<T[]>,
+): Promise<T[]> {
+  const out: T[] = [];
+  for (let start = from; start <= to; start += LOG_WINDOW) {
+    const end = start + LOG_WINDOW - 1n > to ? to : start + LOG_WINDOW - 1n;
+    out.push(...(await query(start, end)));
+  }
+  return out;
 }
 
-export interface Circle {
-  id: string;
-  name: string;
-  /** Contribution per member per round, in whole naira. */
-  amount: string;
-  /** Seconds between rounds. */
-  interval: number;
+export const circlesAbi = [
+  { type: "function", name: "circleId", stateMutability: "pure", inputs: [{ name: "organiser", type: "address" }, { name: "salt", type: "bytes32" }], outputs: [{ type: "bytes32" }] },
+  { type: "function", name: "create", stateMutability: "nonpayable", inputs: [{ name: "salt", type: "bytes32" }, { name: "amount", type: "uint128" }, { name: "interval", type: "uint64" }, { name: "name", type: "string" }], outputs: [{ type: "bytes32" }] },
+  { type: "function", name: "join", stateMutability: "nonpayable", inputs: [{ name: "id", type: "bytes32" }, { name: "name", type: "string" }], outputs: [] },
+  { type: "function", name: "start", stateMutability: "nonpayable", inputs: [{ name: "id", type: "bytes32" }], outputs: [] },
+  { type: "function", name: "isMember", stateMutability: "view", inputs: [{ name: "", type: "bytes32" }, { name: "", type: "address" }], outputs: [{ type: "bool" }] },
+  { type: "function", name: "memberCount", stateMutability: "view", inputs: [{ name: "id", type: "bytes32" }], outputs: [{ type: "uint256" }] },
+  {
+    type: "function", name: "getCircle", stateMutability: "view", inputs: [{ name: "id", type: "bytes32" }],
+    outputs: [
+      { name: "organiser", type: "address" },
+      { name: "amount", type: "uint128" },
+      { name: "interval", type: "uint64" },
+      { name: "startedAt", type: "uint64" },
+      { name: "members", type: "address[]" },
+    ],
+  },
+  { type: "function", name: "currentRound", stateMutability: "view", inputs: [{ name: "id", type: "bytes32" }], outputs: [{ name: "round", type: "uint256" }, { name: "recipient", type: "address" }] },
+  { type: "function", name: "dues", stateMutability: "view", inputs: [{ name: "id", type: "bytes32" }, { name: "member", type: "address" }], outputs: [{ name: "owed", type: "uint256" }, { name: "recipient", type: "address" }, { name: "round", type: "uint256" }] },
+  { type: "event", name: "Created", inputs: [{ name: "id", type: "bytes32", indexed: true }, { name: "organiser", type: "address", indexed: true }, { name: "amount", type: "uint128" }, { name: "interval", type: "uint64" }, { name: "name", type: "string" }] },
+  { type: "event", name: "Joined", inputs: [{ name: "id", type: "bytes32", indexed: true }, { name: "member", type: "address", indexed: true }, { name: "name", type: "string" }] },
+] as const;
+
+const transferEvent = parseAbiItem(
+  "event Transfer(address indexed from, address indexed to, uint256 value)",
+);
+
+const joinedEvent = parseAbiItem(
+  "event Joined(bytes32 indexed id, address indexed member, string name)",
+);
+
+export interface CircleView {
+  id: `0x${string}`;
   organiser: `0x${string}`;
-  members: Member[];
-  /** Payout order, fixed when the circle starts so nobody can be reshuffled. */
-  order: `0x${string}`[];
-  startedAt: number | null;
-  contributions: Contribution[];
-  createdAt: number;
-}
-
-const circles = new Map<string, Circle>();
-
-const id = () => randomBytes(6).toString("hex");
-const now = () => Math.floor(Date.now() / 1000);
-
-export function createCircle(opts: {
-  name: string;
   amount: string;
   interval: number;
-  organiser: string;
-  organiserName: string;
-}): Circle {
-  if (!isAddress(opts.organiser)) throw new Error("organiser is not a valid address");
-  if (!(Number(opts.amount) > 0)) throw new Error("amount must be greater than zero");
-  if (!Number.isFinite(opts.interval) || opts.interval < 60) throw new Error("interval must be at least 60 seconds");
-  if (!opts.name?.trim()) throw new Error("the circle needs a name");
-
-  const circle: Circle = {
-    id: id(),
-    name: opts.name.trim().slice(0, 60),
-    amount: opts.amount,
-    interval: opts.interval,
-    organiser: opts.organiser,
-    members: [{ address: opts.organiser, name: opts.organiserName.trim().slice(0, 40) || "Organiser", joinedAt: now() }],
-    order: [],
-    startedAt: null,
-    contributions: [],
-    createdAt: now(),
-  };
-  circles.set(circle.id, circle);
-  return circle;
-}
-
-export function getCircle(circleId: string): Circle {
-  const c = circles.get(circleId);
-  if (!c) throw new Error("no circle with that code");
-  return c;
-}
-
-export function join(circleId: string, address: string, name: string): Circle {
-  const c = getCircle(circleId);
-  if (!isAddress(address)) throw new Error("not a valid address");
-  if (c.startedAt) throw new Error("this circle has already started");
-  if (c.members.length >= 20) throw new Error("this circle is full");
-  if (c.members.some((m) => m.address.toLowerCase() === address.toLowerCase())) {
-    throw new Error("you are already in this circle");
-  }
-  c.members.push({ address, name: name.trim().slice(0, 40) || "Member", joinedAt: now() });
-  return c;
-}
-
-/**
- * Fixes the payout order and starts the clock. The order is shuffled once and
- * then frozen, so no one can be pushed down the queue after the fact.
- */
-export function start(circleId: string, by: string): Circle {
-  const c = getCircle(circleId);
-  if (c.organiser.toLowerCase() !== by.toLowerCase()) throw new Error("only the organiser can start the circle");
-  if (c.startedAt) throw new Error("already started");
-  if (c.members.length < 2) throw new Error("a circle needs at least two members");
-
-  const shuffled = c.members.map((m) => m.address);
-  for (let i = shuffled.length - 1; i > 0; i--) {
-    const j = randomBytes(1)[0] % (i + 1);
-    [shuffled[i], shuffled[j]] = [shuffled[j], shuffled[i]];
-  }
-  c.order = shuffled;
-  c.startedAt = now();
-  return c;
-}
-
-export function currentRound(c: Circle): number {
-  if (!c.startedAt) return 0;
-  const elapsed = now() - c.startedAt;
-  return Math.min(Math.floor(elapsed / c.interval), c.order.length - 1);
-}
-
-export function recipientFor(c: Circle, round: number): `0x${string}` | null {
-  return c.order[round] ?? null;
-}
-
-export interface Dues {
+  startedAt: number;
+  started: boolean;
+  members: { address: `0x${string}`; name: string }[];
+  pot: string;
   round: number;
   recipient: `0x${string}` | null;
-  recipientName: string | null;
-  amount: string;
-  owed: boolean;
-  paid: boolean;
   roundsTotal: number;
-  endsAt: number | null;
 }
 
-/** What this member owes right now, and to whom. */
-export function duesFor(c: Circle, address: string): Dues {
-  const round = currentRound(c);
-  const recipient = recipientFor(c, round);
-  const isRecipient = recipient?.toLowerCase() === address.toLowerCase();
-  const inCircle = c.members.some((m) => m.address.toLowerCase() === address.toLowerCase());
-  const paid = c.contributions.some(
-    (x) => x.round === round && x.from.toLowerCase() === address.toLowerCase(),
+/** Names live in Joined events rather than storage, which keeps joining cheap. */
+async function namesFor(id: `0x${string}`): Promise<Map<string, string>> {
+  const head = await publicClient.getBlockNumber();
+  const logs = await logsInRange(CIRCLES_DEPLOYED_AT.block, head, (fromBlock, toBlock) =>
+    publicClient.getLogs({ address: CIRCLES, event: joinedEvent, args: { id }, fromBlock, toBlock }),
   );
+  const names = new Map<string, string>();
+  for (const log of logs) {
+    const { member, name } = log.args;
+    if (member) names.set(member.toLowerCase(), name || "Member");
+  }
+  return names;
+}
+
+export async function getCircle(id: string): Promise<CircleView> {
+  if (!/^0x[a-fA-F0-9]{64}$/.test(id)) throw new Error("that is not a circle code");
+  const key = id as `0x${string}`;
+
+  const raw = (await readFresh(() =>
+    publicClient.readContract({
+      address: CIRCLES,
+      abi: circlesAbi,
+      functionName: "getCircle",
+      args: [key],
+    }),
+  )) as readonly [`0x${string}`, bigint, bigint, bigint, readonly `0x${string}`[]];
+
+  const [organiser, amount, interval, startedAt, members] = raw;
+  const names = await namesFor(key);
+  const started = startedAt > 0n;
+
+  let round = 0;
+  let recipient: `0x${string}` | null = null;
+  if (started) {
+    const now = BigInt(Math.floor(Date.now() / 1000));
+    const elapsed = now - startedAt;
+    const r = elapsed / interval;
+    round = Number(r >= BigInt(members.length) ? BigInt(members.length - 1) : r);
+    recipient = members[round] ?? null;
+  }
 
   return {
+    id: key,
+    organiser,
+    amount: formatUnits(amount, 18),
+    interval: Number(interval),
+    startedAt: Number(startedAt),
+    started,
+    members: members.map((a) => ({ address: a, name: names.get(a.toLowerCase()) ?? "Member" })),
+    pot: formatUnits(amount * BigInt(Math.max(0, members.length - 1)), 18),
     round,
     recipient,
-    recipientName: recipient ? nameOf(c, recipient) : null,
-    amount: c.amount,
-    // The person collecting this round does not pay into their own turn.
-    owed: Boolean(c.startedAt) && inCircle && !isRecipient && !paid,
-    paid,
-    roundsTotal: c.order.length,
-    endsAt: c.startedAt ? c.startedAt + (round + 1) * c.interval : null,
+    roundsTotal: members.length,
   };
 }
 
-export function nameOf(c: Circle, address: string): string {
-  return c.members.find((m) => m.address.toLowerCase() === address.toLowerCase())?.name ?? "Member";
+export interface Paid {
+  from: `0x${string}`;
+  round: number;
+  txHash: string;
+  amount: string;
 }
 
 /**
- * Records a contribution against a transaction that already happened. The hash
- * is what makes it true; this record is only an index over the chain.
+ * Contributions are read from NGNm transfer logs, not reported by the client.
+ * A member is credited for a round when the chain shows them paying that
+ * round's recipient at least the circle amount inside that round's window, so
+ * nobody can mark themselves paid without actually paying.
  */
-export function recordContribution(circleId: string, from: string, txHash: string): Circle {
-  const c = getCircle(circleId);
-  if (!isAddress(from)) throw new Error("not a valid address");
-  if (!/^0x[a-fA-F0-9]{64}$/.test(txHash)) throw new Error("not a valid transaction hash");
-  if (c.contributions.some((x) => x.txHash.toLowerCase() === txHash.toLowerCase())) return c;
+export async function contributions(c: CircleView): Promise<Paid[]> {
+  if (!c.started) return [];
+  const amount = parseUnits(c.amount, 18);
+  const memberSet = new Set(c.members.map((m) => m.address.toLowerCase()));
 
-  const round = currentRound(c);
-  const to = recipientFor(c, round);
-  if (!to) throw new Error("this circle has finished");
+  const head = await publicClient.getBlockNumber();
+  const from = blockAt(c.startedAt);
+  const logs = await logsInRange(from > head ? head : from, head, (fromBlock, toBlock) =>
+    publicClient.getLogs({
+      address: NGNM,
+      event: transferEvent,
+      args: { to: c.members.map((m) => m.address) },
+      fromBlock,
+      toBlock,
+    }),
+  );
 
-  c.contributions.push({ from, to, round, txHash, at: now() });
-  return c;
+  const startBlock = blockAt(c.startedAt);
+  const paid: Paid[] = [];
+  for (const log of logs) {
+    const { from: sender, to, value } = log.args;
+    if (!sender || !to || (value ?? 0n) < amount) continue;
+    if (!memberSet.has(sender.toLowerCase())) continue;
+    if (log.blockNumber < startBlock) continue;
+
+    // Round derived from the block rather than fetching each block's timestamp,
+    // which would be one extra call per transfer.
+    const elapsed = Number(log.blockNumber - startBlock);
+    const round = Math.min(Math.floor(elapsed / c.interval), c.roundsTotal - 1);
+    if (c.members[round]?.address.toLowerCase() !== to.toLowerCase()) continue;
+
+    paid.push({ from: sender, round, txHash: log.transactionHash, amount: formatUnits(value!, 18) });
+  }
+  return paid;
 }
 
 export interface Standing {
@@ -185,33 +182,54 @@ export interface Standing {
   onTime: number;
 }
 
-/** Who has actually been paying. The reason to behave, and to come back. */
-export function standings(c: Circle): Standing[] {
-  const round = currentRound(c);
+export function standings(c: CircleView, paid: Paid[]): Standing[] {
   return c.members.map((m) => {
-    let paid = 0;
+    let done = 0;
     let missed = 0;
-    for (let r = 0; r <= round; r++) {
-      if (recipientFor(c, r)?.toLowerCase() === m.address.toLowerCase()) continue;
-      const did = c.contributions.some(
-        (x) => x.round === r && x.from.toLowerCase() === m.address.toLowerCase(),
-      );
-      if (did) paid++;
-      else if (r < round) missed++;
+    for (let r = 0; r <= c.round; r++) {
+      if (c.members[r]?.address.toLowerCase() === m.address.toLowerCase()) continue;
+      const did = paid.some((p) => p.round === r && p.from.toLowerCase() === m.address.toLowerCase());
+      if (did) done++;
+      else if (r < c.round) missed++;
     }
-    const total = paid + missed;
+    const total = done + missed;
     return {
       address: m.address,
       name: m.name,
-      paid,
+      paid: done,
       missed,
-      onTime: total === 0 ? 100 : Math.round((paid / total) * 100),
+      onTime: total === 0 ? 100 : Math.round((done / total) * 100),
     };
   });
 }
 
-export function listCircles(address: string): Circle[] {
-  return [...circles.values()].filter((c) =>
-    c.members.some((m) => m.address.toLowerCase() === address.toLowerCase()),
-  );
+export function saltFor(seed: string): `0x${string}` {
+  return keccak256(toHex(seed));
+}
+
+export async function idFor(organiser: string, salt: `0x${string}`): Promise<`0x${string}`> {
+  return publicClient.readContract({
+    address: CIRCLES,
+    abi: circlesAbi,
+    functionName: "circleId",
+    args: [getAddress(organiser), salt],
+  }) as Promise<`0x${string}`>;
+}
+
+const call = (fn: "create" | "join" | "start", args: readonly unknown[], gas: bigint) => ({
+  to: CIRCLES,
+  data: tag(encodeFunctionData({ abi: circlesAbi, functionName: fn, args: args as never })),
+  gas: `0x${gas.toString(16)}`,
+});
+
+export function buildCreate(salt: `0x${string}`, amount: string, interval: number, name: string) {
+  return call("create", [salt, parseUnits(amount, 18), BigInt(interval), name.slice(0, 60)], 300_000n);
+}
+
+export function buildJoin(id: `0x${string}`, name: string) {
+  return call("join", [id, name.slice(0, 40)], 220_000n);
+}
+
+export function buildStart(id: `0x${string}`) {
+  return call("start", [id], 150_000n);
 }

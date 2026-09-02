@@ -55,6 +55,30 @@ export function tag(calldata: Hex): Hex {
   return (calldata + suffix.replace(/^0x/, "")) as Hex;
 }
 
+/**
+ * Retries a read that fails only because the chain state has not reached the
+ * node yet.
+ *
+ * Reads go through several public nodes and they sit at different heights, so a
+ * read issued straight after a write can land on one that has not seen it. That
+ * looks identical to the thing genuinely not existing, which has already
+ * produced three different phantom bugs here. A freshly written value resolves
+ * within a couple of seconds; something that truly does not exist still fails,
+ * just a moment later.
+ */
+export async function readFresh<T>(read: () => Promise<T>, attempts = 4): Promise<T> {
+  let last: unknown;
+  for (let i = 0; i < attempts; i++) {
+    try {
+      return await read();
+    } catch (e) {
+      last = e;
+      if (i < attempts - 1) await new Promise((r) => setTimeout(r, 700 * (i + 1)));
+    }
+  }
+  throw last;
+}
+
 export const erc20Abi = [
   { type: "function", name: "transfer", stateMutability: "nonpayable", inputs: [{ name: "to", type: "address" }, { name: "value", type: "uint256" }], outputs: [{ type: "bool" }] },
   { type: "function", name: "approve", stateMutability: "nonpayable", inputs: [{ name: "spender", type: "address" }, { name: "value", type: "uint256" }], outputs: [{ type: "bool" }] },
