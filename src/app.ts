@@ -15,6 +15,7 @@ import {
   saltFor,
   standings,
 } from "./circle.js";
+import { handleMcp } from "./mcp.js";
 
 export function createApp() {
   const app = express();
@@ -181,6 +182,31 @@ export function createApp() {
       fail(res, e, 404);
     }
   });
+
+  // MCP, so an agent can use Kobo as tools rather than by reading docs and
+  // composing HTTP calls itself. Stateless: every message carries what it needs,
+  // which is what serverless can actually honour.
+  app.post("/mcp", async (req: Request, res: Response) => {
+    try {
+      const body = req.body;
+      if (Array.isArray(body)) {
+        const out = (await Promise.all(body.map(handleMcp))).filter(Boolean);
+        return out.length ? res.json(out) : res.status(202).end();
+      }
+      const reply = await handleMcp(body ?? {});
+      return reply ? res.json(reply) : res.status(202).end();
+    } catch (e) {
+      res.status(500).json({
+        jsonrpc: "2.0",
+        id: null,
+        error: { code: -32603, message: e instanceof Error ? e.message : "internal error" },
+      });
+    }
+  });
+
+  app.get("/mcp", (_req: Request, res: Response) =>
+    res.status(405).json({ error: "MCP uses POST with a JSON-RPC body" }),
+  );
 
   return app;
 }
