@@ -5,6 +5,16 @@ import { MENTO_CURRENCIES, NGNM } from "./config.js";
 import { canPayGasWith, feeCurrencyAllowlist } from "./chain.js";
 import { balanceOf, buildTransfer, quote } from "./transfer.js";
 import { nairaRate } from "./swap.js";
+import {
+  createCircle,
+  duesFor,
+  getCircle,
+  join as joinCircle,
+  listCircles,
+  recordContribution,
+  standings,
+  start,
+} from "./circle.js";
 
 export function createApp() {
   const app = express();
@@ -83,6 +93,89 @@ export function createApp() {
       const rate = await nairaRate(entry[1] as `0x${string}`);
       if (rate === null) throw new Error(`no Mento pool between ${entry[0]} and NGNm`);
       res.json({ symbol: entry[0], naira: Number(rate).toFixed(2) });
+    } catch (e) {
+      fail(res, e);
+    }
+  });
+
+  const shape = (c: ReturnType<typeof getCircle>, viewer?: string) => ({
+    id: c.id,
+    name: c.name,
+    amount: c.amount,
+    interval: c.interval,
+    organiser: c.organiser,
+    started: Boolean(c.startedAt),
+    members: c.members.map((m) => ({ address: m.address, name: m.name })),
+    pot: (Number(c.amount) * Math.max(0, c.members.length - 1)).toString(),
+    standings: standings(c),
+    dues: viewer ? duesFor(c, viewer) : null,
+  });
+
+  app.post("/v1/circles", (req: Request, res: Response) => {
+    try {
+      const { name, amount, interval, organiser, organiserName } = req.body ?? {};
+      const c = createCircle({ name, amount, interval: Number(interval), organiser, organiserName });
+      res.json(shape(c, organiser));
+    } catch (e) {
+      fail(res, e);
+    }
+  });
+
+  app.get("/v1/circles/:id", (req: Request, res: Response) => {
+    try {
+      const viewer = (req.query.viewer as string) || undefined;
+      res.json(shape(getCircle(req.params.id), viewer));
+    } catch (e) {
+      fail(res, e, 404);
+    }
+  });
+
+  app.post("/v1/circles/:id/join", (req: Request, res: Response) => {
+    try {
+      const { address, name } = req.body ?? {};
+      res.json(shape(joinCircle(req.params.id, address, name), address));
+    } catch (e) {
+      fail(res, e);
+    }
+  });
+
+  app.post("/v1/circles/:id/start", (req: Request, res: Response) => {
+    try {
+      const { by } = req.body ?? {};
+      res.json(shape(start(req.params.id, by), by));
+    } catch (e) {
+      fail(res, e);
+    }
+  });
+
+  // The transaction is the truth. This only indexes a transfer that already
+  // happened, so a member cannot mark themselves paid without paying.
+  app.post("/v1/circles/:id/paid", (req: Request, res: Response) => {
+    try {
+      const { from, txHash } = req.body ?? {};
+      res.json(shape(recordContribution(req.params.id, from, txHash), from));
+    } catch (e) {
+      fail(res, e);
+    }
+  });
+
+  app.get("/v1/circles/:id/dues/:address", (req: Request, res: Response) => {
+    try {
+      const c = getCircle(req.params.id);
+      const dues = duesFor(c, req.params.address);
+      res.json({
+        ...dues,
+        transaction: dues.owed && dues.recipient ? buildTransfer(dues.recipient, c.amount) : null,
+      });
+    } catch (e) {
+      fail(res, e, 404);
+    }
+  });
+
+  app.get("/v1/mine/:address", (req: Request, res: Response) => {
+    try {
+      if (!isAddress(req.params.address)) throw new Error("not a valid address");
+      res.json(listCircles(req.params.address).map((c) => shape(c, req.params.address)));
     } catch (e) {
       fail(res, e);
     }
