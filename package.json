@@ -17,6 +17,7 @@
     "dry-run": "tsx scripts/dry-run.ts",
     "compile": "node scripts/compile.mjs",
     "deploy:circles": "tsx scripts/deploy-circles.ts",
+    "deploy:payout": "tsx scripts/deploy-payout.ts",
     "test:circles": "tsx scripts/test-circles.ts",
     "test:local": "tsx scripts/test-circles-local.ts",
     "test:payout": "tsx scripts/test-payout-local.ts"

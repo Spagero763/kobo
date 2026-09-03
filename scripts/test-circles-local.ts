@@ -127,7 +127,8 @@ async function main() {
   console.log("\nrotation");
   await call(bob, "join", [id, "Bob"]);
   await call(carol, "join", [id, "Carol"]);
-  check("three members", ((await read("getCircle", [id])) as unknown[])[4].length === 3);
+  const joined = (await read("getCircle", [id])) as unknown[];
+  check("three members", (joined[4] as unknown[]).length === 3);
 
   await expectRevert("no round before start", alice, "currentRound", [id], "NotStarted");
 

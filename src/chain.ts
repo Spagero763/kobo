@@ -23,12 +23,14 @@ const RPC_URLS = [
   "https://rpc.ankr.com/celo",
 ].filter((u, i, a) => u && a.indexOf(u) === i);
 
+const transport = fallback(
+  RPC_URLS.map((url) => http(url, { timeout: 15_000, retryCount: 2 })),
+  { rank: false },
+);
+
 export const publicClient: PublicClient = createPublicClient({
   chain: celo,
-  transport: fallback(
-    RPC_URLS.map((url) => http(url, { timeout: 15_000, retryCount: 2 })),
-    { rank: false },
-  ),
+  transport,
 }) as PublicClient;
 
 let wallet: WalletClient | null = null;
@@ -36,10 +38,13 @@ let wallet: WalletClient | null = null;
 export function walletClient(): WalletClient {
   if (!config.agentPrivateKey) throw new Error("AGENT_PRIVATE_KEY is not set");
   if (!wallet) {
+    // Writes share the reads' fallback set. A single flaky node was enough to
+    // fail a broadcast outright, which is worse than a failed read: you are
+    // left not knowing whether the transaction went out.
     wallet = createWalletClient({
       account: privateKeyToAccount(config.agentPrivateKey),
       chain: celo,
-      transport: http(config.celoRpc),
+      transport,
     });
   }
   return wallet;
