@@ -52,6 +52,19 @@ export const HUB = "0x765DE816845861e75A25fCA122bb6898B8B1282a" as const;
  */
 export const FEE_CURRENCY_DIRECTORY = "0x15F344b9E6c3Cb6F0376A36A64928b13F62C6276" as const;
 
+/** Self's Identity Verification Hub V2 on Celo mainnet. */
+export const SELF_HUB = "0xe57F4773bd9c9d8b6Cd70431117d353298B9f5BF" as const;
+
+/**
+ * Seed for the verification scope. The scope itself is derived from this and
+ * the deployed contract address, so the frontend must use the same seed or the
+ * hub rejects every proof.
+ */
+export const SELF_SCOPE_SEED = "kobo-personhood";
+
+/** Binds an address to a real person. Empty until deployed. */
+export const PERSONHOOD = (process.env.PERSONHOOD ?? "") as `0x${string}` | "";
+
 /** Payout currencies reachable from naira through the broker. */
 export const MENTO_CURRENCIES = {
   USDm: "0x765DE816845861e75A25fCA122bb6898B8B1282a",
