@@ -63,9 +63,19 @@ export const MENTO_CURRENCIES = {
   GBPm: "0xCCF663b1fF11028f0b19058d0f7B674004a40746"
 } as const;
 
+/**
+ * Environment values arrive through shells, dashboards and clipboards, and pick
+ * things up on the way. A byte order mark on the attribution tag broke every
+ * write path in production while every read still worked, because the mark is
+ * invisible and the tag looked correct in logs.
+ */
+function env(name: string, fallback = ""): string {
+  return (process.env[name] ?? fallback).replace(/^﻿/, "").trim();
+}
+
 /** Accepts a key with or without the 0x prefix, since wallets export both ways. */
 function privateKey(): `0x${string}` | "" {
-  const raw = (process.env.AGENT_PRIVATE_KEY ?? "").trim();
+  const raw = env("AGENT_PRIVATE_KEY");
   if (!raw) return "";
   return (raw.startsWith("0x") ? raw : `0x${raw}`) as `0x${string}`;
 }
@@ -76,10 +86,21 @@ export const config = {
    * user's own wallet, so a missing agent address must not take the whole site
    * down: it is checked where it is used, not at import time.
    */
-  agentAddress: (process.env.AGENT_ADDRESS ?? "") as `0x${string}`,
+  agentAddress: env("AGENT_ADDRESS") as `0x${string}`,
   agentPrivateKey: privateKey(),
-  attributionTag: process.env.ATTRIBUTION_TAG ?? "",
-  celoRpc: process.env.CELO_RPC ?? "https://forno.celo.org",
-  publicBaseUrl: (process.env.PUBLIC_BASE_URL ?? "http://localhost:3000").replace(/\/$/, ""),
-  port: Number(process.env.PORT ?? "3000"),
+  attributionTag: env("ATTRIBUTION_TAG"),
+  celoRpc: env("CELO_RPC", "https://forno.celo.org"),
+  publicBaseUrl: env("PUBLIC_BASE_URL", "http://localhost:3000").replace(/\/$/, ""),
+  port: Number(env("PORT", "3000")),
 };
+
+/**
+ * A tag that will not encode means nothing this project sends is credited to it,
+ * and the failure surfaces only at signing time. Checked once at startup so it
+ * shows up in the logs rather than in front of someone sending money.
+ */
+if (config.attributionTag && !/^[a-z0-9_]{1,32}$/.test(config.attributionTag)) {
+  console.warn(
+    `[config] ATTRIBUTION_TAG "${config.attributionTag}" is not a valid ERC-8021 code. Transactions will not be attributed.`,
+  );
+}
