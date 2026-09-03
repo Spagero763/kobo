@@ -16,6 +16,7 @@ import {
   standings,
 } from "./circle.js";
 import { handleMcp } from "./mcp.js";
+import { buildCrossSend, crossQuote } from "./crosspay.js";
 
 export function createApp() {
   const app = express();
@@ -180,6 +181,33 @@ export function createApp() {
       });
     } catch (e) {
       fail(res, e, 404);
+    }
+  });
+
+  // Naira in, another currency out. The sender holds only naira and never
+  // touches the destination asset or a gas token.
+
+  app.get("/v1/quote/cross", async (req: Request, res: Response) => {
+    try {
+      const { to, amount, from } = req.query as Record<string, string>;
+      if (!to) throw new Error("to is required, e.g. to=KESm");
+      if (!amount) throw new Error("amount is required, in naira");
+      if (from && !isAddress(from)) throw new Error("from must be a valid address");
+      res.json(await crossQuote(to, amount, from as `0x${string}` | undefined));
+    } catch (e) {
+      fail(res, e);
+    }
+  });
+
+  app.post("/v1/send-as/build", async (req: Request, res: Response) => {
+    try {
+      const { to, amount, recipient } = req.body ?? {};
+      if (!to) throw new Error("to is required, e.g. \"KESm\"");
+      if (!amount) throw new Error("amount is required, in naira");
+      if (!recipient || !isAddress(recipient)) throw new Error("recipient must be a valid address");
+      res.json(await buildCrossSend(String(to), String(amount), recipient));
+    } catch (e) {
+      fail(res, e);
     }
   });
 

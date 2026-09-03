@@ -33,6 +33,13 @@ export const NGNM = "0xE2702Bd97ee33c88c8f6f92DA3B733608aa76F71" as const;
 export const MENTO_BROKER = "0x777A8255cA72412f0d706dc03C9D1987306B4CaD" as const;
 
 /**
+ * Delivers a different currency than the one sent, in one transaction. Pulls
+ * exactly what the sender approved, swaps, and forwards the whole proceeds. It
+ * holds nothing between transactions and has no owner.
+ */
+export const PAYOUT = "0xed75e88e1733ebe2bff0b5c0e7a315493e45536a" as const;
+
+/**
  * Governance controlled list of what may pay for gas. Read at startup rather
  * than trusted, because membership changes and a wrong feeCurrency surfaces as
  * a confusing failure at send time.

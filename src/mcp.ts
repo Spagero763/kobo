@@ -4,6 +4,7 @@ import { canPayGasWith, feeCurrencyAllowlist } from "./chain.js";
 import { balanceOf, buildTransfer, quote } from "./transfer.js";
 import { nairaRate } from "./swap.js";
 import { contributions, getCircle, standings } from "./circle.js";
+import { buildCrossSend, crossQuote } from "./crosspay.js";
 
 const PROTOCOL_VERSION = "2025-06-18";
 
@@ -119,6 +120,42 @@ const tools: Tool[] = [
         })),
       };
     },
+  },
+  {
+    name: "kobo_quote_cross",
+    description:
+      "What it costs to send naira and have the recipient paid in another currency. Returns the fee as a share of the amount, because the fee is fixed rather than proportional and is poor value on small sends. Read the advice field if present.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        to: { type: "string", description: "destination currency, e.g. KESm" },
+        amount: { type: "string", description: "naira to send" },
+        from: { type: "string", description: "sender address, optional, adds a balance check" },
+      },
+      required: ["to", "amount"],
+    },
+    run: async (a) =>
+      crossQuote(
+        String(a.to ?? ""),
+        amount(a.amount),
+        a.from ? address(a.from, "from") : undefined,
+      ),
+  },
+  {
+    name: "kobo_build_cross_send",
+    description:
+      "Build the two transactions that send naira and deliver another currency: an approval, then the send. Both are signed by the sender's own wallet, in that order. Quote first.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        to: { type: "string", description: "destination currency, e.g. KESm" },
+        amount: { type: "string", description: "naira to send" },
+        recipient: { type: "string", description: "who receives the other currency" },
+      },
+      required: ["to", "amount", "recipient"],
+    },
+    run: async (a) =>
+      buildCrossSend(String(a.to ?? ""), amount(a.amount), address(a.recipient, "recipient")),
   },
   {
     name: "kobo_circle",
