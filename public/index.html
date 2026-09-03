@@ -134,6 +134,19 @@
   footer { text-align: center; font-size: 12.5px; color: var(--faint); margin-top: 26px; line-height: 1.7; }
   footer a { color: var(--muted); }
 
+  .why { font-size: 13px; line-height: 1.6; color: var(--muted); margin: 12px 0 0; }
+  .why strong { color: var(--ink); font-weight: 600; }
+  .cost { margin: 10px 0 0; }
+  .cost .row { display: flex; justify-content: space-between; gap: 16px; padding: 7px 0; }
+  .cost .row.stack { display: block; padding: 11px 0; border-top: 1px solid var(--line); }
+  .cost .row.stack:first-child { border-top: 0; }
+  .cost dt { color: var(--muted); font-size: 14px; }
+  .cost .row.stack dt { color: var(--ink); font-weight: 600; font-size: 14px; margin-bottom: 3px; }
+  .cost dd { margin: 0; font-variant-numeric: tabular-nums; font-size: 14px; }
+  .cost .row.stack dd { color: var(--muted); font-size: 13px; line-height: 1.6; }
+  .cost .total { border-top: 1px solid var(--line); margin-top: 4px; padding-top: 10px; font-weight: 600; }
+  .cost .total dt { color: var(--ink); }
+
   @media (prefers-reduced-motion: reduce) {
     *, *::before, *::after { animation-duration: .01ms !important; animation-iteration-count: 1 !important; transition-duration: .01ms !important; }
   }
@@ -156,7 +169,31 @@
     <div class="addr" id="addr">Not connected</div>
     <div id="connect-wrap" style="margin-top:14px">
       <button class="primary" id="connect">Connect wallet</button>
+      <p class="why" id="why">
+        Kobo never holds your money. You sign each transfer in your own wallet, so
+        the naira stays yours until it reaches whoever you sent it to.
+        <br><br>
+        Open this in <strong>MiniPay</strong> and it connects on its own. In a
+        desktop browser you need a Celo wallet such as MetaMask or Valora.
+      </p>
     </div>
+  </section>
+
+  <!-- Shown before any wallet exists. Two reviewers independently said they
+       could not learn what a transfer costs without connecting first, which is
+       backwards: the fee does not depend on who is asking. -->
+  <section class="card" id="cost-card">
+    <div class="bal-label">What it costs</div>
+    <dl class="cost">
+      <div class="row"><dt>Send</dt><dd id="c-amount">₦5,000</dd></div>
+      <div class="row"><dt>They receive</dt><dd id="c-arrives" class="skel">₦5,000</dd></div>
+      <div class="row"><dt>Network fee</dt><dd id="c-fee" class="skel">₦0.00</dd></div>
+      <div class="row total"><dt>Leaves your balance</dt><dd id="c-total" class="skel">₦0.00</dd></div>
+    </dl>
+    <p class="why" id="c-note">
+      The fee is charged in naira, not CELO, and it is the same whether you send
+      ₦100 or ₦100,000. Live figures, read from Celo just now.
+    </p>
   </section>
 
   <section class="card" id="send-card" hidden>
@@ -201,9 +238,29 @@
     </div>
   </section>
 
+  <section class="card" id="more">
+    <div class="bal-label">Also here</div>
+    <dl class="cost">
+      <div class="row stack">
+        <dt>Pay in another currency</dt>
+        <dd>Send naira, they receive shillings, cedis or dollars. One transaction, still no CELO.</dd>
+      </div>
+      <div class="row stack">
+        <dt>Savings circles</dt>
+        <dd>Ajo, onchain. Everyone pays the same each round and takes a turn collecting. Members pay each other directly and the contract only records whose turn it is, so there is no pot for anyone to run off with.</dd>
+      </div>
+      <div class="row stack">
+        <dt>For agents</dt>
+        <dd>A <a href="/skill.md">skill file</a> and an MCP server at <span class="mono">/mcp</span>, so software can send naira without a browser.</dd>
+      </div>
+    </dl>
+  </section>
+
   <footer>
     Gas is paid in naira. You never need CELO.<br>
-    <a href="https://github.com/Spagero763/kobo">Source</a> · Celo mainnet
+    <a href="https://github.com/Spagero763/kobo">Source</a> ·
+    <a href="https://celoscan.io/address/0xdfcf531070a11c94464768547ff239e6bacf4b00">Contracts</a> ·
+    Celo mainnet
   </footer>
 </main>
 

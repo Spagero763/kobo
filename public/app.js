@@ -165,6 +165,7 @@ async function connect() {
 
     $("addr").textContent = short(state.account);
     $("connect-wrap").hidden = true;
+    $("cost-card").hidden = true;
     $("send-card").hidden = false;
     await loadBalance();
 
@@ -341,4 +342,33 @@ if (p) {
 } else {
   setNet("bad", "No wallet");
   $("connect").textContent = "Open in MiniPay";
+  $("connect").disabled = true;
 }
+
+/* What a transfer costs, before any wallet exists. The fee does not depend on
+   who is asking, so making someone connect first to find out is backwards. */
+async function loadCost() {
+  const card = $("cost-card");
+  try {
+    const r = await fetch("/v1/cost?amount=5000");
+    if (!r.ok) throw new Error();
+    const c = await r.json();
+
+    $("c-amount").textContent = `₦${fmt(c.example)}`;
+    $("c-arrives").textContent = `₦${fmt(c.arrives)}`;
+    $("c-fee").textContent = `₦${fmt(c.estimatedFee)}`;
+    $("c-total").textContent = `₦${fmt(c.total)}`;
+    for (const id of ["c-arrives", "c-fee", "c-total"]) $(id).classList.remove("skel");
+
+    if (!c.nairaAcceptedAsGas) {
+      $("c-note").textContent =
+        "Celo is not accepting naira for gas right now, so a transfer would need CELO. This is read from the chain on every load.";
+    }
+  } catch {
+    // Better to remove the panel than to leave dashes where numbers belong,
+    // which is the exact complaint that produced it.
+    card.hidden = true;
+  }
+}
+
+loadCost();

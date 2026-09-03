@@ -3,7 +3,7 @@ import { join } from "node:path";
 import { isAddress } from "viem";
 import { MENTO_CURRENCIES, NGNM } from "./config.js";
 import { canPayGasWith, feeCurrencyAllowlist } from "./chain.js";
-import { balanceOf, buildTransfer, quote } from "./transfer.js";
+import { balanceOf, buildTransfer, cost, quote } from "./transfer.js";
 import { nairaRate } from "./swap.js";
 import {
   buildCreate,
@@ -41,6 +41,18 @@ export function createApp() {
       if (!isAddress(address)) throw new Error("not a valid address");
       const raw = await balanceOf(address);
       res.json({ address, token: "NGNm", balance: (Number(raw) / 1e18).toFixed(2) });
+    } catch (e) {
+      fail(res, e);
+    }
+  });
+
+  // Deliberately needs no address. A reviewer and a first-time visitor should
+  // both be able to see what a transfer costs without connecting anything.
+  app.get("/v1/cost", async (req: Request, res: Response) => {
+    try {
+      const amount = (req.query.amount as string) ?? "5000";
+      if (!(Number(amount) > 0)) throw new Error("amount must be greater than zero");
+      res.json(await cost(amount));
     } catch (e) {
       fail(res, e);
     }

@@ -21,6 +21,27 @@ export interface Quote {
 const GAS_LIMIT = 200_000n;
 const GAS_USED = 100_000n;
 
+/**
+ * What a transfer costs right now, with no wallet and no address. The fee does
+ * not depend on who is sending or how much, so there is no reason to make
+ * someone connect a wallet before they can find out what they would be paying.
+ */
+export async function cost(amount = "5000") {
+  const [{ anchor, tip }, accepted] = await Promise.all([gasPrice(NGNM), canPayGasWith(NGNM)]);
+  const estimatedFee = (anchor + tip) * GAS_USED;
+  const worstCase = (anchor * 2n + tip) * GAS_LIMIT;
+  return {
+    example: amount,
+    arrives: amount,
+    feeCurrency: "NGNm" as const,
+    estimatedFee: formatUnits(estimatedFee, 18),
+    maximumFee: formatUnits(worstCase, 18),
+    total: formatUnits(parseUnits(amount, 18) + estimatedFee, 18),
+    senderNeedsCelo: false,
+    nairaAcceptedAsGas: accepted,
+  };
+}
+
 export async function balanceOf(address: `0x${string}`): Promise<bigint> {
   return publicClient.readContract({
     address: NGNM,
