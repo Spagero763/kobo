@@ -80,4 +80,45 @@ contract Payout {
 
         emit Sent(msg.sender, recipient, tokenIn, tokenOut, amountIn, amountOut);
     }
+
+    /// @notice Same, but hopping through an intermediate currency.
+    /// @dev Mento pools are all paired against one hub asset, so naira reaches
+    /// shillings only by way of it. Both legs settle here in one transaction, so
+    /// the sender is never left holding the middle currency if the second leg
+    /// fails: the whole thing reverts.
+    /// @param minVia Floor on the intermediate leg. Set from a live quote so a
+    /// stale first hop cannot be filled at an arbitrary rate either.
+    function sendVia(
+        address exchangeProvider,
+        bytes32 firstExchangeId,
+        bytes32 secondExchangeId,
+        address tokenIn,
+        address tokenVia,
+        address tokenOut,
+        uint256 amountIn,
+        uint256 minVia,
+        uint256 minOut,
+        address recipient
+    ) external returns (uint256 amountOut) {
+        if (recipient == address(0) || recipient == address(this)) revert BadRecipient();
+
+        if (!IERC20(tokenIn).transferFrom(msg.sender, address(this), amountIn)) revert TransferInFailed();
+        if (!IERC20(tokenIn).approve(address(broker), amountIn)) revert ApproveFailed();
+
+        uint256 mid = broker.swapIn(exchangeProvider, firstExchangeId, tokenIn, tokenVia, amountIn, minVia);
+        if (mid == 0) revert NothingReceived();
+
+        if (!IERC20(tokenVia).approve(address(broker), mid)) revert ApproveFailed();
+        amountOut = broker.swapIn(exchangeProvider, secondExchangeId, tokenVia, tokenOut, mid, minOut);
+        if (amountOut == 0) revert NothingReceived();
+
+        if (!IERC20(tokenOut).transfer(recipient, amountOut)) revert TransferOutFailed();
+
+        // Nothing may settle here, in either currency. The middle leg is the
+        // easy one to leak, so it is checked as well as the destination.
+        if (IERC20(tokenOut).balanceOf(address(this)) != 0) revert ResidueLeftBehind();
+        if (IERC20(tokenVia).balanceOf(address(this)) != 0) revert ResidueLeftBehind();
+
+        emit Sent(msg.sender, recipient, tokenIn, tokenOut, amountIn, amountOut);
+    }
 }

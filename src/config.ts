@@ -37,7 +37,13 @@ export const MENTO_BROKER = "0x777A8255cA72412f0d706dc03C9D1987306B4CaD" as cons
  * exactly what the sender approved, swaps, and forwards the whole proceeds. It
  * holds nothing between transactions and has no owner.
  */
-export const PAYOUT = "0xed75e88e1733ebe2bff0b5c0e7a315493e45536a" as const;
+export const PAYOUT = "0xdfcf531070a11c94464768547ff239e6bacf4b00" as const;
+
+/**
+ * Mento pairs every currency against this one, so naira reaches shillings only
+ * by hopping through it. Both legs settle in a single transaction.
+ */
+export const HUB = "0x765DE816845861e75A25fCA122bb6898B8B1282a" as const;
 
 /**
  * Governance controlled list of what may pay for gas. Read at startup rather

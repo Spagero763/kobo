@@ -7,6 +7,7 @@
 import { readFileSync } from "node:fs";
 import { encodeFunctionData, formatUnits, isAddress, parseUnits } from "viem";
 import { MENTO_BROKER, MENTO_CURRENCIES, NGNM } from "../src/config.js";
+const HUB = MENTO_CURRENCIES.USDm as `0x${string}`;
 import { account, erc20Abi, feeParams, publicClient, tag, walletClient } from "../src/chain.js";
 import { findPool, quoteSwap } from "../src/swap.js";
 
@@ -30,8 +31,12 @@ async function main() {
   console.log(`deployer  ${me}`);
   console.log(`sending   ${naira(amountIn)} NGNm -> ${entry[0]} -> ${to}\n`);
 
-  const pool = await findPool(NGNM, tokenOut);
-  if (!pool) throw new Error(`no Mento pool between NGNm and ${entry[0]}`);
+  // Naira has one pool, against the hub asset, so anything else is two legs.
+  const direct = await findPool(NGNM, tokenOut);
+  const firstLeg = direct ?? (await findPool(NGNM, HUB));
+  const secondLeg = direct ? null : await findPool(HUB, tokenOut);
+  if (!firstLeg || (!direct && !secondLeg)) throw new Error(`no Mento route from NGNm to ${entry[0]}`);
+  console.log(direct ? "route     direct" : `route     NGNm -> USDm -> ${entry[0]}`);
 
   const hash = await wallet.deployContract({
     abi: artifact.abi,
@@ -51,10 +56,14 @@ async function main() {
   const balanceOf = async (token: `0x${string}`, who: `0x${string}`, blockNumber?: bigint) =>
     publicClient.readContract({ address: token, abi: erc20Abi, functionName: "balanceOf", args: [who], blockNumber });
 
-  const expected = (await quoteSwap(NGNM, tokenOut, amountIn))!;
+  const viaAmount = direct ? 0n : (await quoteSwap(NGNM, HUB, amountIn))!;
+  const expected = direct
+    ? (await quoteSwap(NGNM, tokenOut, amountIn))!
+    : (await quoteSwap(HUB, tokenOut, viaAmount))!;
   // A real pool moves between quoting and filling, so the floor is set below the
   // quote rather than at it. Too tight and an honest swap reverts.
   const minOut = (expected * 99n) / 100n;
+  const minVia = (viaAmount * 99n) / 100n;
   console.log(`quote     ${naira(amountIn)} NGNm -> ${formatUnits(expected, 18)} ${entry[0]}`);
   console.log(`floor     ${formatUnits(minOut, 18)} ${entry[0]}\n`);
 
@@ -88,12 +97,29 @@ async function main() {
   const receipt = await write(
     "send",
     payout,
-    encodeFunctionData({
-      abi: artifact.abi,
-      functionName: "send",
-      args: [pool.provider, pool.exchangeId, NGNM, tokenOut, amountIn, minOut, to],
-    }),
-    800_000n,
+    direct
+      ? encodeFunctionData({
+          abi: artifact.abi,
+          functionName: "send",
+          args: [firstLeg.provider, firstLeg.exchangeId, NGNM, tokenOut, amountIn, minOut, to],
+        })
+      : encodeFunctionData({
+          abi: artifact.abi,
+          functionName: "sendVia",
+          args: [
+            firstLeg.provider,
+            firstLeg.exchangeId,
+            secondLeg!.exchangeId,
+            NGNM,
+            HUB,
+            tokenOut,
+            amountIn,
+            minVia,
+            minOut,
+            to,
+          ],
+        }),
+    direct ? 800_000n : 1_400_000n,
   );
 
   const at = receipt.blockNumber;

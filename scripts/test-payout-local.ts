@@ -216,6 +216,60 @@ async function main() {
   ]);
   await expectRevert("a token that returns false is caught", lied, "TransferInFailed");
 
+  // Mento pairs everything against one hub asset, so naira reaches shillings
+  // only by hopping through it. Both legs settle in one transaction.
+  console.log("\ntwo hops");
+  const hub = await deploy(MockERC20, ["USDm", 0n]);
+  const shilling2 = await deploy(MockERC20, ["KESm", 0n]);
+  const hubHex = bytesToHex(hub.bytes) as `0x${string}`;
+  const shilling2Hex = bytesToHex(shilling2.bytes) as `0x${string}`;
+  const brokerHex = bytesToHex(broker.bytes) as `0x${string}`;
+  await call(alice, hub, MockERC20.abi, "mint", [brokerHex, 10_000n * ONE]);
+  await call(alice, shilling2, MockERC20.abi, "mint", [brokerHex, 100_000n * ONE]);
+
+  const doSendVia = async (amountIn: bigint, minVia: bigint, minOut: bigint, to: string) =>
+    call(alice, payout, Payout.abi, "sendVia", [
+      zeroAddress,
+      EXCHANGE_ID,
+      EXCHANGE_ID,
+      nairaHex,
+      hubHex,
+      shilling2Hex,
+      amountIn,
+      minVia,
+      minOut,
+      to,
+    ]);
+
+  await call(alice, naira, MockERC20.abi, "approve", [payoutHex, 100n * ONE]);
+  const hopped = await doSendVia(10n * ONE, 0n, 0n, recipient.hex);
+  check("a two hop send succeeds", !hopped.execResult.exceptionError);
+  check(
+    "recipient gets the doubly swapped amount",
+    ((await read(shilling2, MockERC20.abi, "balanceOf", [recipient.hex])) as bigint) === 40n * ONE,
+    "10 naira, doubled twice",
+  );
+  check(
+    "nothing settles in the middle currency",
+    ((await read(hub, MockERC20.abi, "balanceOf", [payoutHex])) as bigint) === 0n,
+  );
+  check(
+    "nothing settles in the destination",
+    ((await read(shilling2, MockERC20.abi, "balanceOf", [payoutHex])) as bigint) === 0n,
+  );
+
+  const firstLegTooTight = await doSendVia(ONE, 5n * ONE, 0n, recipient.hex);
+  check("a floor on the middle leg is enforced", !!firstLegTooTight.execResult.exceptionError);
+
+  const secondLegTooTight = await doSendVia(ONE, 0n, 10n * ONE, recipient.hex);
+  check("a floor on the final leg is enforced", !!secondLegTooTight.execResult.exceptionError);
+
+  await expectRevert(
+    "two hop rejects a zero recipient too",
+    await doSendVia(ONE, 0n, 0n, zeroAddress),
+    "BadRecipient",
+  );
+
   console.log(`\n${passed} passed, ${failed} failed`);
   if (failed) process.exit(1);
 }

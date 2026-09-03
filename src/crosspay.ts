@@ -1,5 +1,5 @@
 import { encodeFunctionData, formatUnits, parseUnits } from "viem";
-import { MENTO_CURRENCIES, NGNM, PAYOUT } from "./config.js";
+import { HUB, MENTO_CURRENCIES, NGNM, PAYOUT } from "./config.js";
 import { erc20Abi, gasPrice, publicClient } from "./chain.js";
 import { findPool, quoteSwap } from "./swap.js";
 
@@ -19,18 +19,57 @@ const payoutAbi = [
     ],
     outputs: [{ type: "uint256" }],
   },
+  {
+    type: "function",
+    name: "sendVia",
+    stateMutability: "nonpayable",
+    inputs: [
+      { name: "exchangeProvider", type: "address" },
+      { name: "firstExchangeId", type: "bytes32" },
+      { name: "secondExchangeId", type: "bytes32" },
+      { name: "tokenIn", type: "address" },
+      { name: "tokenVia", type: "address" },
+      { name: "tokenOut", type: "address" },
+      { name: "amountIn", type: "uint256" },
+      { name: "minVia", type: "uint256" },
+      { name: "minOut", type: "uint256" },
+      { name: "recipient", type: "address" },
+    ],
+    outputs: [{ type: "uint256" }],
+  },
 ] as const;
 
-// Measured on mainnet. A swap plus two transfers burns roughly five times what
-// a plain transfer costs, and the sender is owed that number before signing
+// Measured on mainnet. A swap costs roughly five times a plain transfer, and
+// two swaps roughly seven, so the sender is owed the real number before signing
 // rather than after.
 const CROSS_GAS = 470_000n;
+const CROSS_GAS_VIA = 700_000n;
 const APPROVE_GAS = 60_000n;
 const GAS_LIMIT = 800_000n;
+const GAS_LIMIT_VIA = 1_400_000n;
 
 // Below this, the fixed gas cost is a large enough share of the transfer that
 // sending naira directly is almost always the better answer.
 const POOR_VALUE_RATIO = 0.05;
+
+interface Route {
+  direct: boolean;
+  first: { provider: `0x${string}`; exchangeId: `0x${string}` };
+  second?: { provider: `0x${string}`; exchangeId: `0x${string}` };
+}
+
+/**
+ * Naira has exactly one pool, against the hub, so every other currency is two
+ * legs. Discovered rather than assumed, because Mento's pool set changes.
+ */
+async function routeFor(tokenOut: `0x${string}`): Promise<Route> {
+  const direct = await findPool(NGNM, tokenOut);
+  if (direct) return { direct: true, first: direct };
+  const first = await findPool(NGNM, HUB);
+  const second = await findPool(HUB, tokenOut);
+  if (!first || !second) throw new Error("no Mento route from naira to that currency");
+  return { direct: false, first, second };
+}
 
 export function currencyBySymbol(symbol: string): { symbol: string; address: `0x${string}` } | null {
   const found = Object.entries(MENTO_CURRENCIES).find(
@@ -77,15 +116,15 @@ export async function crossQuote(
   const amountIn = parseUnits(amountNaira, 18);
   if (amountIn <= 0n) throw new Error("amount must be greater than zero");
 
-  const pool = await findPool(NGNM, currency.address);
-  if (!pool) throw new Error(`no Mento pool between NGNm and ${currency.symbol}`);
-
-  const out = await quoteSwap(NGNM, currency.address, amountIn);
-  if (out === null || out === 0n) throw new Error(`no price available for ${currency.symbol}`);
+  const route = await routeFor(currency.address);
+  const out = route.direct
+    ? (await quoteSwap(NGNM, currency.address, amountIn))!
+    : (await quoteSwap(HUB, currency.address, (await quoteSwap(NGNM, HUB, amountIn))!))!;
+  if (!out) throw new Error(`no price available for ${currency.symbol}`);
 
   const { anchor, tip } = await gasPrice(NGNM);
   const perGas = anchor + tip;
-  const fee = CROSS_GAS * perGas;
+  const fee = (route.direct ? CROSS_GAS : CROSS_GAS_VIA) * perGas;
   const approvalFee = APPROVE_GAS * perGas;
   const minOut = (out * BigInt(Math.round((100 - slippagePct) * 100))) / 10_000n;
 
@@ -142,14 +181,46 @@ export async function buildCrossSend(
   if (!currency) throw new Error(`unknown currency ${toSymbol}`);
 
   const amountIn = parseUnits(amountNaira, 18);
-  const pool = await findPool(NGNM, currency.address);
-  if (!pool) throw new Error(`no Mento pool between NGNm and ${currency.symbol}`);
+  const route = await routeFor(currency.address);
+  const floor = (v: bigint) => (v * BigInt(Math.round((100 - slippagePct) * 100))) / 10_000n;
 
-  const out = await quoteSwap(NGNM, currency.address, amountIn);
-  if (out === null || out === 0n) throw new Error(`no price available for ${currency.symbol}`);
-  const minOut = (out * BigInt(Math.round((100 - slippagePct) * 100))) / 10_000n;
+  const via = route.direct ? 0n : (await quoteSwap(NGNM, HUB, amountIn))!;
+  const out = route.direct
+    ? (await quoteSwap(NGNM, currency.address, amountIn))!
+    : (await quoteSwap(HUB, currency.address, via))!;
+  if (!out) throw new Error(`no price available for ${currency.symbol}`);
+
+  const send = route.direct
+    ? {
+        data: encodeFunctionData({
+          abi: payoutAbi,
+          functionName: "send",
+          args: [route.first.provider, route.first.exchangeId, NGNM, currency.address, amountIn, floor(out), recipient],
+        }),
+        gas: GAS_LIMIT,
+      }
+    : {
+        data: encodeFunctionData({
+          abi: payoutAbi,
+          functionName: "sendVia",
+          args: [
+            route.first.provider,
+            route.first.exchangeId,
+            route.second!.exchangeId,
+            NGNM,
+            HUB,
+            currency.address,
+            amountIn,
+            floor(via),
+            floor(out),
+            recipient,
+          ],
+        }),
+        gas: GAS_LIMIT_VIA,
+      };
 
   return {
+    route: route.direct ? `NGNm -> ${currency.symbol}` : `NGNm -> USDm -> ${currency.symbol}`,
     approve: {
       to: NGNM,
       data: encodeFunctionData({ abi: erc20Abi, functionName: "approve", args: [PAYOUT, amountIn] }),
@@ -158,16 +229,12 @@ export async function buildCrossSend(
     },
     send: {
       to: PAYOUT,
-      data: encodeFunctionData({
-        abi: payoutAbi,
-        functionName: "send",
-        args: [pool.provider, pool.exchangeId, NGNM, currency.address, amountIn, minOut, recipient],
-      }),
+      data: send.data,
       feeCurrency: NGNM,
-      gas: `0x${GAS_LIMIT.toString(16)}`,
+      gas: `0x${send.gas.toString(16)}`,
     },
     expected: formatUnits(out, 18),
-    minimumReceived: formatUnits(minOut, 18),
+    minimumReceived: formatUnits(floor(out), 18),
     note: "sign the approval first, then the send, both with the sender's own wallet",
   };
 }
