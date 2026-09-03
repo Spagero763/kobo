@@ -134,6 +134,30 @@
   footer { text-align: center; font-size: 12.5px; color: var(--faint); margin-top: 26px; line-height: 1.7; }
   footer a { color: var(--muted); }
 
+  nav.tabs { display: flex; gap: 4px; margin: 14px 0 12px; background: var(--surface); border: 1px solid var(--line); border-radius: 12px; padding: 4px; }
+  nav.tabs button {
+    flex: 1; padding: 9px 4px; border: 0; border-radius: 9px; background: transparent;
+    color: var(--muted); font: 600 13px/1 inherit; cursor: pointer; font-family: inherit;
+  }
+  nav.tabs button[aria-selected="true"] { background: var(--bg); color: var(--ink); box-shadow: var(--shadow); }
+  nav.tabs button:disabled { opacity: .38; cursor: not-allowed; }
+
+  .lede { font-size: 13.5px; line-height: 1.6; color: var(--muted); margin: 0 0 14px; }
+  .empty { text-align: center; color: var(--faint); font-size: 13.5px; padding: 22px 6px; line-height: 1.6; }
+  .pill { display: inline-block; font-size: 11.5px; padding: 3px 8px; border-radius: 999px; border: 1px solid var(--line); color: var(--muted); }
+  .pill.on { color: var(--accent); border-color: color-mix(in srgb, var(--accent) 40%, var(--line)); }
+  .member { display: flex; justify-content: space-between; align-items: center; gap: 10px; padding: 9px 0; border-top: 1px solid var(--line); font-size: 14px; }
+  .member:first-child { border-top: 0; }
+  .member .who { display: flex; flex-direction: column; gap: 2px; }
+  .member .turn { font-size: 11.5px; color: var(--faint); }
+
+  select {
+    width: 100%; padding: 12px 13px; border: 1px solid var(--line); border-radius: 11px;
+    background: var(--bg); color: var(--ink); font: 400 16px/1.2 inherit; font-family: inherit;
+    -webkit-appearance: none; appearance: none;
+  }
+  select:focus { outline: 2px solid color-mix(in srgb, var(--accent) 40%, transparent); outline-offset: 1px; }
+
   .qr { background: #fff; border: 1px solid var(--line); border-radius: 12px; padding: 12px; margin: 14px 0 0; }
   .qr svg { display: block; width: 100%; height: auto; }
   a.primary { display: block; text-align: center; text-decoration: none; margin-top: 12px; }
@@ -200,7 +224,14 @@
     </p>
   </section>
 
-  <section class="card" id="send-card" hidden>
+  <nav class="tabs" id="tabs" role="tablist" hidden>
+    <button role="tab" data-tab="send" aria-selected="true">Send</button>
+    <button role="tab" data-tab="abroad" aria-selected="false">Abroad</button>
+    <button role="tab" data-tab="circles" aria-selected="false">Circles</button>
+    <button role="tab" data-tab="you" aria-selected="false">You</button>
+  </nav>
+
+  <section class="card" id="send-card" data-panel="send" hidden>
     <div class="field">
       <label for="to">Send to</label>
       <input id="to" class="mono" placeholder="0x..." autocomplete="off" spellcheck="false" inputmode="text">
@@ -242,7 +273,107 @@
     </div>
   </section>
 
-  <section class="card" id="verify-card" hidden>
+  <section class="card" data-panel="abroad" hidden>
+    <p class="lede">
+      Send naira, and they receive their own currency. The exchange happens in
+      the same transaction that moves the money, and you still hold nothing but
+      naira.
+    </p>
+
+    <div class="field">
+      <label for="ab-to">Send to</label>
+      <input id="ab-to" class="mono" placeholder="0x..." autocomplete="off" spellcheck="false">
+      <div class="err" id="ab-to-err"></div>
+    </div>
+
+    <div class="field">
+      <label for="ab-cur">They receive</label>
+      <select id="ab-cur">
+        <option value="USDm">US dollars (USDm)</option>
+        <option value="KESm">Kenyan shillings (KESm)</option>
+        <option value="GHSm">Ghanaian cedis (GHSm)</option>
+        <option value="ZARm">South African rand (ZARm)</option>
+        <option value="EURm">Euros (EURm)</option>
+        <option value="GBPm">Pounds (GBPm)</option>
+        <option value="XOFm">West African CFA (XOFm)</option>
+      </select>
+    </div>
+
+    <div class="field" style="margin-bottom:10px">
+      <label for="ab-amt">You send</label>
+      <input id="ab-amt" type="text" inputmode="decimal" placeholder="0.00" autocomplete="off">
+      <div class="err" id="ab-amt-err"></div>
+      <div class="chips">
+        <button class="chip" data-abamt="5000">₦5,000</button>
+        <button class="chip" data-abamt="20000">₦20,000</button>
+        <button class="chip" data-abamt="50000">₦50,000</button>
+      </div>
+    </div>
+
+    <div class="quote">
+      <dl>
+        <div class="row"><dt>They receive</dt><dd id="ab-arrives">—</dd></div>
+        <div class="row"><dt>Rate</dt><dd id="ab-rate">—</dd></div>
+        <div class="row"><dt>Network fee</dt><dd id="ab-fee">—</dd></div>
+        <div class="row total"><dt>Leaves your balance</dt><dd id="ab-total">—</dd></div>
+      </dl>
+      <div class="note hide" id="ab-note"></div>
+    </div>
+
+    <div style="margin-top:16px">
+      <button class="primary" id="ab-send" disabled>Enter an amount</button>
+    </div>
+
+    <div class="status" id="ab-status" role="status" aria-live="polite">
+      <div class="ic" id="ab-status-ic"></div>
+      <div><div class="msg" id="ab-status-msg"></div><div class="sub" id="ab-status-sub"></div></div>
+    </div>
+  </section>
+
+  <section class="card" data-panel="circles" hidden>
+    <p class="lede">
+      Ajo, onchain. Everyone pays the same amount each round and takes a turn
+      collecting. Members pay each other directly, so there is no pot sitting
+      anywhere for anyone to run off with.
+    </p>
+
+    <div class="field">
+      <label for="ci-id">Open a circle</label>
+      <input id="ci-id" class="mono" placeholder="circle id, 0x..." autocomplete="off" spellcheck="false">
+      <div class="err" id="ci-err"></div>
+    </div>
+    <button class="primary" id="ci-open">Open</button>
+
+    <div id="ci-view" hidden></div>
+
+    <details style="margin-top:18px">
+      <summary style="cursor:pointer;color:var(--muted);font-size:13.5px">Start a new circle</summary>
+      <div class="field" style="margin-top:12px">
+        <label for="ci-name">What is it for</label>
+        <input id="ci-name" placeholder="Sunday contribution" autocomplete="off">
+      </div>
+      <div class="field">
+        <label for="ci-amt">Each member pays, per round</label>
+        <input id="ci-amt" type="text" inputmode="decimal" placeholder="5000" autocomplete="off">
+      </div>
+      <div class="field">
+        <label for="ci-int">A round lasts</label>
+        <select id="ci-int">
+          <option value="604800">A week</option>
+          <option value="1209600">Two weeks</option>
+          <option value="2592000">A month</option>
+          <option value="3600">An hour (for testing)</option>
+        </select>
+      </div>
+      <button class="primary" id="ci-create">Create it</button>
+      <div class="status" id="ci-status" role="status" aria-live="polite">
+        <div class="ic" id="ci-status-ic"></div>
+        <div><div class="msg" id="ci-status-msg"></div><div class="sub" id="ci-status-sub"></div></div>
+      </div>
+    </details>
+  </section>
+
+  <section class="card" id="verify-card" data-panel="you" hidden>
     <div class="bal-label">Prove you are a person</div>
     <p class="why" id="v-intro">
       A savings circle only works if one person cannot quietly hold four seats.
@@ -274,21 +405,12 @@
   </section>
 
   <section class="card" id="more">
-    <div class="bal-label">Also here</div>
-    <dl class="cost">
-      <div class="row stack">
-        <dt>Pay in another currency</dt>
-        <dd>Send naira, they receive shillings, cedis or dollars. One transaction, still no CELO.</dd>
-      </div>
-      <div class="row stack">
-        <dt>Savings circles</dt>
-        <dd>Ajo, onchain. Everyone pays the same each round and takes a turn collecting. Members pay each other directly and the contract only records whose turn it is, so there is no pot for anyone to run off with.</dd>
-      </div>
-      <div class="row stack">
-        <dt>For agents</dt>
-        <dd>A <a href="/skill.md">skill file</a> and an MCP server at <span class="mono">/mcp</span>, so software can send naira without a browser.</dd>
-      </div>
-    </dl>
+    <div class="bal-label">For agents</div>
+    <p class="why" style="margin-top:8px">
+      Kobo is not only a page. There is a <a href="/skill.md">skill file</a> and an
+      MCP server at <span class="mono">/mcp</span>, so software can send naira,
+      quote a rate or read a circle without a browser. Same rails, same contracts.
+    </p>
   </section>
 
   <footer>

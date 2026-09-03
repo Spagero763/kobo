@@ -166,7 +166,8 @@ async function connect() {
     $("addr").textContent = short(state.account);
     $("connect-wrap").hidden = true;
     $("cost-card").hidden = true;
-    $("send-card").hidden = false;
+    $("tabs").hidden = false;
+    showTab("send");
     await loadBalance();
     showVerifyState();
 
@@ -346,6 +347,55 @@ if (p) {
   $("connect").disabled = true;
 }
 
+/* Tabs. Everything below the balance lives in one of four panels, so the page
+   shows one job at a time instead of a column of cards. */
+function showTab(name) {
+  document.querySelectorAll("[data-panel]").forEach((p) => {
+    p.hidden = p.dataset.panel !== name;
+  });
+  document.querySelectorAll("[data-tab]").forEach((b) => {
+    b.setAttribute("aria-selected", String(b.dataset.tab === name));
+  });
+  if (name === "you") showVerifyState();
+}
+
+document.querySelectorAll("[data-tab]").forEach((b) =>
+  b.addEventListener("click", () => showTab(b.dataset.tab)),
+);
+
+/* A status box per panel, so a message about a circle cannot appear under the
+   send form. */
+function panelStatus(prefix, kind, msg, sub = "") {
+  const box = $(`${prefix}-status`);
+  if (!box) return;
+  $(`${prefix}-status-ic`).innerHTML = kind === "work" ? ICONS.spin : kind === "ok" ? ICONS.ok : ICONS.bad;
+  $(`${prefix}-status-msg`).textContent = msg;
+  $(`${prefix}-status-sub`).innerHTML = sub;
+  box.classList.add("on");
+}
+
+/* Signs a prepared transaction and waits for it. Every write in the app goes
+   through here so they behave the same way. */
+async function signAndWait(built, prefix, working, done) {
+  const p = provider();
+  await ensureCelo();
+  const tx = { from: state.account, to: built.to, data: built.data, gas: built.gas };
+  if (state.feeInNaira && built.feeCurrency) tx.feeCurrency = built.feeCurrency;
+
+  panelStatus(prefix, "work", working);
+  const hash = await p.request({ method: "eth_sendTransaction", params: [tx] });
+  const link = `<a href="https://celoscan.io/tx/${hash}" target="_blank" rel="noopener">${short(hash)}</a>`;
+  panelStatus(prefix, "work", "Waiting for the network.", link);
+
+  const receipt = await waitForReceipt(p, hash);
+  if (receipt.status === "0x0" || receipt.status === 0) {
+    panelStatus(prefix, "bad", "The network rejected it.", link);
+    return null;
+  }
+  panelStatus(prefix, "ok", done, link);
+  return hash;
+}
+
 /* Proof of personhood. The proof is produced on the person's phone and lands
    onchain without touching this page, so there is nothing to submit here: we
    ask the contract until it says yes. */
@@ -411,6 +461,227 @@ async function startVerify() {
 }
 
 $("v-start").addEventListener("click", startVerify);
+
+/* Paying in another currency. The fee is fixed rather than proportional, so on
+   a small amount it is a large share and the quote says so plainly. */
+let abTimer = null;
+let abQuote = null;
+
+async function loadAbroadQuote() {
+  const to = $("ab-to").value.trim();
+  const amount = $("ab-amt").value.trim();
+  const symbol = $("ab-cur").value;
+  const btn = $("ab-send");
+
+  abQuote = null;
+  btn.disabled = true;
+  if (!to || !amount || Number(amount) <= 0) {
+    btn.textContent = "Enter an amount";
+    return;
+  }
+
+  btn.textContent = "Checking";
+  try {
+    const r = await fetch(
+      `/v1/quote/cross?from=${state.account}&to=${symbol}&amount=${encodeURIComponent(amount)}`,
+    );
+    const q = await r.json();
+    if (!r.ok) throw new Error(q.error || "could not quote");
+
+    $("ab-arrives").textContent = `${Number(q.arrives).toFixed(2)} ${q.to}`;
+    // The rate is how much of the destination one naira buys, so it reads
+    // better inverted: what a unit of their currency costs in naira.
+    $("ab-rate").textContent = `₦${fmt(1 / Number(q.rate))} per ${q.to}`;
+    $("ab-fee").textContent = `₦${fmt(q.estimatedFee)} (${q.feeSharePct}%)`;
+    $("ab-total").textContent = `₦${fmt(Number(amount) + Number(q.estimatedFee))}`;
+
+    const note = $("ab-note");
+    if (q.advice) {
+      note.textContent = q.advice;
+      note.classList.remove("hide");
+    } else {
+      note.classList.add("hide");
+    }
+
+    abQuote = q;
+    btn.disabled = !q.sufficient;
+    btn.textContent = q.sufficient ? `Send ₦${fmt(amount)}` : "Not enough naira";
+  } catch (e) {
+    $("ab-note").textContent = e.message;
+    $("ab-note").classList.remove("hide");
+    btn.textContent = "Enter an amount";
+  }
+}
+
+const scheduleAbroad = () => {
+  clearTimeout(abTimer);
+  abTimer = setTimeout(loadAbroadQuote, 400);
+};
+
+$("ab-to").addEventListener("input", scheduleAbroad);
+$("ab-amt").addEventListener("input", scheduleAbroad);
+$("ab-cur").addEventListener("change", scheduleAbroad);
+document.querySelectorAll("[data-abamt]").forEach((b) =>
+  b.addEventListener("click", () => {
+    $("ab-amt").value = b.dataset.abamt;
+    scheduleAbroad();
+  }),
+);
+
+$("ab-send").addEventListener("click", async () => {
+  if (state.busy || !abQuote) return;
+  state.busy = true;
+  $("ab-send").disabled = true;
+  try {
+    const r = await fetch("/v1/send-as/build", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        to: $("ab-cur").value,
+        amount: $("ab-amt").value.trim(),
+        recipient: $("ab-to").value.trim(),
+      }),
+    });
+    const built = await r.json();
+    if (!r.ok) throw new Error(built.error || "could not build it");
+
+    // Two signatures: the contract has to be allowed to take the naira before
+    // it can swap it. The approval is for exactly this amount, never unlimited.
+    const approved = await signAndWait(built.approve, "ab", "Allowing Kobo to take this naira.", "Approved.");
+    if (!approved) return;
+    const hash = await signAndWait(built.send, "ab", `Sending. They receive about ${Number(built.expected).toFixed(2)}.`, "Sent.");
+    if (hash) {
+      $("ab-amt").value = "";
+      await loadBalance();
+    }
+  } catch (e) {
+    panelStatus("ab", "bad", plainError(e));
+  } finally {
+    state.busy = false;
+    $("ab-send").disabled = false;
+    loadAbroadQuote();
+  }
+});
+
+/* Savings circles. Membership lives in the contract; the money never touches
+   it, so everything here is either a read or a transaction the member signs. */
+async function openCircle(id) {
+  const view = $("ci-view");
+  $("ci-err").textContent = "";
+  view.hidden = true;
+
+  try {
+    const r = await fetch(`/v1/circles/${id}`);
+    const c = await r.json();
+    if (!r.ok) throw new Error(c.error || "no circle with that id");
+
+    const dues = state.account
+      ? await fetch(`/v1/circles/${id}/dues/${state.account}`).then((x) => (x.ok ? x.json() : null))
+      : null;
+
+    const mine = c.members.some((m) => m.address.toLowerCase() === state.account?.toLowerCase());
+    const rows = c.members
+      .map((m, i) => {
+        const turn = c.started
+          ? i === c.round
+            ? '<span class="pill on">collecting now</span>'
+            : `<span class="turn">round ${i + 1}</span>`
+          : `<span class="turn">round ${i + 1}</span>`;
+        const you = m.address.toLowerCase() === state.account?.toLowerCase() ? " (you)" : "";
+        return `<div class="member"><div class="who"><strong>${m.name || "Member"}${you}</strong><span class="turn mono">${short(m.address)}</span></div>${turn}</div>`;
+      })
+      .join("");
+
+    let action = "";
+    if (!c.started && !mine) {
+      action = `<button class="primary" id="ci-join" style="margin-top:14px">Join this circle</button>`;
+    } else if (!c.started && mine && c.organiser.toLowerCase() === state.account?.toLowerCase()) {
+      action =
+        c.members.length >= 2
+          ? `<button class="primary" id="ci-start" style="margin-top:14px">Start it</button>`
+          : `<p class="why">Waiting for at least one more member before it can start.</p>`;
+    } else if (dues?.owed) {
+      action = `<button class="primary" id="ci-pay" style="margin-top:14px">Pay ₦${fmt(dues.amount)} to ${dues.recipientName || "this round"}</button>`;
+    } else if (dues?.collecting) {
+      action = `<p class="why">It is your turn. The others pay you directly this round.</p>`;
+    } else if (dues?.paid) {
+      action = `<p class="why">You have paid this round.</p>`;
+    }
+
+    view.innerHTML = `
+      <div class="bal-label" style="margin-top:18px">${c.members[0]?.name || "Circle"}</div>
+      <dl class="cost">
+        <div class="row"><dt>Each round</dt><dd>₦${fmt(c.amount)}</dd></div>
+        <div class="row"><dt>Members</dt><dd>${c.members.length}</dd></div>
+        <div class="row"><dt>Status</dt><dd>${c.started ? `round ${c.round + 1} of ${c.roundsTotal}` : "not started"}</dd></div>
+      </dl>
+      <div style="margin-top:14px">${rows}</div>
+      ${action}
+      <div class="status" id="cx-status" role="status" aria-live="polite">
+        <div class="ic" id="cx-status-ic"></div>
+        <div><div class="msg" id="cx-status-msg"></div><div class="sub" id="cx-status-sub"></div></div>
+      </div>`;
+    view.hidden = false;
+
+    $("ci-join")?.addEventListener("click", async () => {
+      const name = prompt("What should the others call you?") || "Member";
+      const r2 = await fetch(`/v1/circles/${id}/build/join`, {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ name }),
+      });
+      const b = await r2.json();
+      if (!r2.ok) return panelStatus("cx", "bad", b.error || "could not join");
+      if (await signAndWait(b.transaction, "cx", "Joining.", "You are in.")) openCircle(id);
+    });
+
+    $("ci-start")?.addEventListener("click", async () => {
+      const r2 = await fetch(`/v1/circles/${id}/build/start`, { method: "POST" });
+      const b = await r2.json();
+      if (!r2.ok) return panelStatus("cx", "bad", b.error || "could not start");
+      if (await signAndWait(b.transaction, "cx", "Starting.", "Started.")) openCircle(id);
+    });
+
+    $("ci-pay")?.addEventListener("click", async () => {
+      if (await signAndWait(dues.transaction, "cx", "Paying.", "Paid.")) {
+        await loadBalance();
+        openCircle(id);
+      }
+    });
+  } catch (e) {
+    $("ci-err").textContent = e.message;
+  }
+}
+
+$("ci-open").addEventListener("click", () => {
+  const id = $("ci-id").value.trim();
+  if (id) openCircle(id);
+});
+
+$("ci-create").addEventListener("click", async () => {
+  const name = $("ci-name").value.trim();
+  const amount = $("ci-amt").value.trim();
+  const interval = $("ci-int").value;
+  if (!name || !(Number(amount) > 0)) {
+    return panelStatus("ci", "bad", "It needs a name and an amount.");
+  }
+  try {
+    const r = await fetch("/v1/circles/build", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ organiser: state.account, name, amount, interval: Number(interval) }),
+    });
+    const b = await r.json();
+    if (!r.ok) throw new Error(b.error || "could not create it");
+    if (await signAndWait(b.transaction, "ci", "Creating.", "Created.")) {
+      $("ci-id").value = b.id;
+      panelStatus("ci", "ok", "Created. Share the id below so others can join.", `<span class="mono">${b.id}</span>`);
+      openCircle(b.id);
+    }
+  } catch (e) {
+    panelStatus("ci", "bad", plainError(e));
+  }
+});
 
 /* What a transfer costs, before any wallet exists. The fee does not depend on
    who is asking, so making someone connect first to find out is backwards. */
