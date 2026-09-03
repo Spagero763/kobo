@@ -168,6 +168,7 @@ async function connect() {
     $("cost-card").hidden = true;
     $("send-card").hidden = false;
     await loadBalance();
+    showVerifyState();
 
     const note = $("gasnote");
     if (state.feeInNaira) {
@@ -344,6 +345,72 @@ if (p) {
   $("connect").textContent = "Open in MiniPay";
   $("connect").disabled = true;
 }
+
+/* Proof of personhood. The proof is produced on the person's phone and lands
+   onchain without touching this page, so there is nothing to submit here: we
+   ask the contract until it says yes. */
+let verifyPoll = null;
+
+async function refreshVerified() {
+  if (!state.account) return null;
+  try {
+    const r = await fetch(`/v1/personhood/${state.account}`);
+    if (!r.ok) return null;
+    return await r.json();
+  } catch {
+    return null;
+  }
+}
+
+async function showVerifyState() {
+  const card = $("verify-card");
+  const s = await refreshVerified();
+  // Hidden entirely when the contract is not configured, rather than offering
+  // a button that cannot work.
+  if (!s?.configured) {
+    card.hidden = true;
+    return;
+  }
+  card.hidden = false;
+  $("v-done").hidden = !s.verified;
+  $("v-idle").hidden = s.verified;
+  if (s.verified) {
+    $("v-qr").hidden = true;
+    if (verifyPoll) {
+      clearInterval(verifyPoll);
+      verifyPoll = null;
+    }
+  }
+}
+
+async function startVerify() {
+  if (!state.account) return;
+  const btn = $("v-start");
+  btn.disabled = true;
+  btn.textContent = "Preparing";
+  try {
+    const r = await fetch(`/v1/personhood/${state.account}/link`);
+    if (!r.ok) throw new Error((await r.json()).error || "could not start");
+    const { link, qr } = await r.json();
+
+    $("v-qr-img").innerHTML = qr;
+    $("v-open").href = link;
+    $("v-idle").hidden = true;
+    $("v-qr").hidden = false;
+
+    // The page never sees the proof, so the chain is the only source of truth.
+    verifyPoll = setInterval(async () => {
+      const s = await refreshVerified();
+      if (s?.verified) showVerifyState();
+    }, 4000);
+  } catch (e) {
+    status("bad", plainError(e));
+    btn.disabled = false;
+    btn.textContent = "Prove I am a person";
+  }
+}
+
+$("v-start").addEventListener("click", startVerify);
 
 /* What a transfer costs, before any wallet exists. The fee does not depend on
    who is asking, so making someone connect first to find out is backwards. */

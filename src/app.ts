@@ -19,6 +19,8 @@ import { handleMcp } from "./mcp.js";
 import { buildCrossSend, crossQuote } from "./crosspay.js";
 import { balanceOfToken, fromUnits, tokenBySymbol, withGasFlags } from "./tokens.js";
 import { buildNairaTransfer, quoteNaira } from "./naira.js";
+import { buildLink, status as personhoodStatus } from "./personhood.js";
+import { toString } from "qrcode";
 
 export function createApp() {
   const app = express();
@@ -149,6 +151,32 @@ export function createApp() {
         transaction: buildNairaTransfer(token, to, String(amount)),
         note: "sign this with your own wallet. the fee comes out of NGNm.",
       });
+    } catch (e) {
+      fail(res, e);
+    }
+  });
+
+  // Proof of personhood. A circle needs to tell one member from the same member
+  // twice, and an address cannot answer that.
+
+  app.get("/v1/personhood/:address", async (req: Request, res: Response) => {
+    try {
+      const address = req.params.address;
+      if (!isAddress(address)) throw new Error("not a valid address");
+      res.json(await personhoodStatus(address));
+    } catch (e) {
+      fail(res, e);
+    }
+  });
+
+  app.get("/v1/personhood/:address/link", async (req: Request, res: Response) => {
+    try {
+      const address = req.params.address;
+      if (!isAddress(address)) throw new Error("not a valid address");
+      const { link, sessionId } = buildLink(address);
+      // The QR is rendered here so the page needs no QR library of its own.
+      const qr = await toString(link, { type: "svg", margin: 1, errorCorrectionLevel: "L" });
+      res.json({ link, sessionId, qr });
     } catch (e) {
       fail(res, e);
     }

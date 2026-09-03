@@ -134,6 +134,10 @@
   footer { text-align: center; font-size: 12.5px; color: var(--faint); margin-top: 26px; line-height: 1.7; }
   footer a { color: var(--muted); }
 
+  .qr { background: #fff; border: 1px solid var(--line); border-radius: 12px; padding: 12px; margin: 14px 0 0; }
+  .qr svg { display: block; width: 100%; height: auto; }
+  a.primary { display: block; text-align: center; text-decoration: none; margin-top: 12px; }
+
   .why { font-size: 13px; line-height: 1.6; color: var(--muted); margin: 12px 0 0; }
   .why strong { color: var(--ink); font-weight: 600; }
   .cost { margin: 10px 0 0; }
@@ -235,6 +239,37 @@
     <div class="status" id="status" role="status" aria-live="polite">
       <div class="ic" id="status-ic"></div>
       <div><div class="msg" id="status-msg"></div><div class="sub" id="status-sub"></div></div>
+    </div>
+  </section>
+
+  <section class="card" id="verify-card" hidden>
+    <div class="bal-label">Prove you are a person</div>
+    <p class="why" id="v-intro">
+      A savings circle only works if one person cannot quietly hold four seats.
+      Kobo checks that with a passport, through <strong>Self</strong>, and keeps
+      only a number that says "same person" and nothing else. No name, no
+      passport number, no date of birth. None of it is even asked for.
+    </p>
+    <div id="v-idle">
+      <button class="primary" id="v-start">Prove I am a person</button>
+    </div>
+    <div id="v-qr" hidden>
+      <div class="qr" id="v-qr-img"></div>
+      <p class="why">
+        Open the <strong>Self</strong> app and scan this. If you have already
+        registered your passport there, you will not need it again.
+      </p>
+      <a class="primary" id="v-open" href="#" target="_blank" rel="noopener">Open the Self app</a>
+      <div class="status" id="v-status" role="status" aria-live="polite">
+        <div class="ic"></div>
+        <div><div class="msg">Waiting for your proof</div><div class="sub">This stays open until it lands onchain.</div></div>
+      </div>
+    </div>
+    <div id="v-done" hidden>
+      <div class="status ok">
+        <div class="ic"></div>
+        <div><div class="msg">Verified</div><div class="sub" id="v-sub">You can join savings circles.</div></div>
+      </div>
     </div>
   </section>
 
