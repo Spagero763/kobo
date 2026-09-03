@@ -17,6 +17,8 @@ import {
 } from "./circle.js";
 import { handleMcp } from "./mcp.js";
 import { buildCrossSend, crossQuote } from "./crosspay.js";
+import { balanceOfToken, fromUnits, tokenBySymbol, withGasFlags } from "./tokens.js";
+import { buildNairaTransfer, quoteNaira } from "./naira.js";
 
 export function createApp() {
   const app = express();
@@ -78,6 +80,75 @@ export function createApp() {
       if (!to || !isAddress(to)) throw new Error("to must be a valid address");
       if (!amount) throw new Error("amount is required");
       res.json({ transaction: buildTransfer(to, amount), note: "sign this with your own wallet" });
+    } catch (e) {
+      fail(res, e);
+    }
+  });
+
+  // Both naira on Celo. They are different tokens from different issuers, so
+  // the symbol is required rather than guessed.
+
+  app.get("/v1/naira", async (_req: Request, res: Response) => {
+    try {
+      const tokens = await withGasFlags();
+      res.json({
+        tokens: tokens.map((t) => ({
+          symbol: t.symbol,
+          label: t.label,
+          address: t.address,
+          decimals: t.decimals,
+          canPayOwnGas: t.payGas,
+        })),
+        feeAlwaysPaidIn: "NGNm",
+        note: "cNGN cannot pay for its own gas on Celo, so its fee is taken in NGNm. Either way the sender never needs CELO.",
+      });
+    } catch (e) {
+      fail(res, e);
+    }
+  });
+
+  app.get("/v1/naira/:symbol/balance/:address", async (req: Request, res: Response) => {
+    try {
+      const token = tokenBySymbol(req.params.symbol);
+      if (!token) throw new Error(`unknown token ${req.params.symbol}, expected NGNm or cNGN`);
+      const address = req.params.address;
+      if (!isAddress(address)) throw new Error("not a valid address");
+      res.json({
+        address,
+        token: token.symbol,
+        label: token.label,
+        balance: fromUnits(token, await balanceOfToken(token, address)),
+      });
+    } catch (e) {
+      fail(res, e);
+    }
+  });
+
+  app.get("/v1/naira/:symbol/quote", async (req: Request, res: Response) => {
+    try {
+      const token = tokenBySymbol(req.params.symbol);
+      if (!token) throw new Error(`unknown token ${req.params.symbol}, expected NGNm or cNGN`);
+      const { from, to, amount } = req.query as Record<string, string>;
+      if (!from || !isAddress(from)) throw new Error("from must be a valid address");
+      if (!to || !isAddress(to)) throw new Error("to must be a valid address");
+      if (!amount) throw new Error("amount is required");
+      res.json(await quoteNaira(token, from, to, amount));
+    } catch (e) {
+      fail(res, e);
+    }
+  });
+
+  app.post("/v1/naira/:symbol/build", async (req: Request, res: Response) => {
+    try {
+      const token = tokenBySymbol(req.params.symbol);
+      if (!token) throw new Error(`unknown token ${req.params.symbol}, expected NGNm or cNGN`);
+      const { to, amount } = req.body ?? {};
+      if (!to || !isAddress(to)) throw new Error("to must be a valid address");
+      if (!amount) throw new Error("amount is required");
+      res.json({
+        transaction: buildNairaTransfer(token, to, String(amount)),
+        note: "sign this with your own wallet. the fee comes out of NGNm.",
+      });
     } catch (e) {
       fail(res, e);
     }

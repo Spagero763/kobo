@@ -15,6 +15,7 @@
     "register": "tsx scripts/register-8004.ts",
     "naira": "tsx scripts/get-naira.ts",
     "dry-run": "tsx scripts/dry-run.ts",
+    "verify:tokens": "tsx scripts/verify-tokens.ts",
     "compile": "node scripts/compile.mjs",
     "deploy:circles": "tsx scripts/deploy-circles.ts",
     "deploy:payout": "tsx scripts/deploy-payout.ts",
