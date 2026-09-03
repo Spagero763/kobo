@@ -37,7 +37,7 @@
     }
   ],
   "trust": {
-    "proofOfPersonhood": "self",
-    "attribution": "erc-8021"
+    "attribution": "erc-8021",
+    "custody": "none, every transaction is signed by the sender's own wallet"
   }
 }

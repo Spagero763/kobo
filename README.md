@@ -2,10 +2,8 @@
 
 Send naira onchain without holding CELO.
 
-Kobo moves NGNm, Mento's naira stablecoin, on Celo mainnet. Gas is paid in the
-naira itself, so a sender never has to acquire CELO, learn what gas is, or keep a
-second balance topped up. One account per person, proven with a passport rather
-than a phone number.
+Kobo moves naira on Celo mainnet and pays the network fee in naira, so a sender
+never has to acquire CELO, learn what gas is, or keep a second balance topped up.
 
 It works from four places: a web app, a REST API, an MCP server, and an
 installable agent skill. A person sends naira from the web app. An agent sends
@@ -33,21 +31,29 @@ exchange settled onchain in the same transaction that moves the money.
 The sender still never holds anything but naira. Not the fee asset, not the
 destination currency.
 
-## Why NGNm and not cNGN
+## Two naira, both supported
 
-Two different tokens have been called cNGN. Mento's naira, now branded NGNm, and
-the SEC-regulated one issued by the Convexity consortium, which deployed to Celo
-in August 2026.
+There are two naira stablecoins on Celo, from two unrelated issuers, and they are
+not interchangeable.
 
-Only one of them can pay for its own gas. Celo's fee currency allowlist is
-governance controlled and readable onchain by calling `getCurrencies()` on the
-FeeCurrencyDirectory. NGNm is on it. The regulated cNGN is not, so a sender
-holding it would still need CELO, which is the entire problem Kobo exists to
-remove.
+| | NGNm | cNGN |
+| --- | --- | --- |
+| Issuer | Mento | independent, SEC-regulated |
+| Decimals | 18 | 6 |
+| Pays its own gas | yes | no |
 
-If cNGN is added to the allowlist later, supporting it is a config change. The
-allowlist is checked at startup rather than hardcoded, so the day it lands Kobo
-can use it.
+Only NGNm is on Celo's fee currency allowlist, which is governance controlled and
+readable onchain via `getCurrencies()` on the FeeCurrencyDirectory. So a cNGN
+transfer cannot pay for itself.
+
+Kobo sends both, and takes the fee in NGNm either way. A cNGN holder therefore
+needs a small NGNm float for fees, the way you keep coins for a bus fare, but
+still never needs CELO. The quote says so before anything is signed rather than
+failing at the wallet.
+
+The six against eighteen decimals is a factor of a trillion, and a wrong constant
+does not throw, it sends the wrong amount. `npm run verify:tokens` reads the
+decimals off each contract and refuses to pass if the registry disagrees.
 
 ## Addresses
 
@@ -56,8 +62,11 @@ Celo mainnet, chain 42220.
 | | |
 | --- | --- |
 | NGNm | `0xE2702Bd97ee33c88c8f6f92DA3B733608aa76F71` |
+| cNGN | `0xF6829D7393dAe24509eb1E52eE8e572e2E271a4f` |
 | Mento broker | `0x777A8255cA72412f0d706dc03C9D1987306B4CaD` |
 | FeeCurrencyDirectory | `0x15F344b9E6c3Cb6F0376A36A64928b13F62C6276` |
+| Circles | `0xce0b075d9b2ba71f4c8097e3a43e7d1240505173` |
+| Payout | `0xed75e88e1733ebe2bff0b5c0e7a315493e45536a` |
 
 NGNm is 18 decimals and allowlisted directly, so it needs no fee currency
 adapter. Tokens with other decimals, USDC and USD₮ among them, are allowlisted
@@ -70,8 +79,12 @@ Early. Building in the open.
 
 ## Stack
 
-Celo mainnet, NGNm, Mento for FX, CIP-64 fee abstraction, Self for proof of
-personhood, ERC-8021 attribution, TypeScript.
+Celo mainnet, NGNm and cNGN, Mento for FX, CIP-64 fee abstraction, ERC-8021
+attribution, TypeScript.
+
+Proof of personhood is not implemented. It is worth having for the savings
+circles, where one person holding several seats is the obvious abuse, but it is
+not built and this file will not claim otherwise until it is.
 
 ## License
 
