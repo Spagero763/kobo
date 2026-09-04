@@ -220,7 +220,13 @@
     </dl>
     <p class="why" id="c-note">
       The fee is charged in naira, not CELO, and it is the same whether you send
-      ₦100 or ₦100,000. Live figures, read from Celo just now.
+      ₦100 or ₦100,000. Read from Celo when this page was built, not an estimate.
+    </p>
+    <p class="why">
+      Your balance is shown as <strong>NGNm</strong>, which is naira. It is the
+      Mento naira on Celo, and one NGNm is one naira. Kobo also sends
+      <strong>cNGN</strong>, the SEC-regulated naira, and takes the fee in NGNm
+      either way because cNGN cannot pay for its own gas.
     </p>
   </section>
 
@@ -336,6 +342,28 @@
       collecting. Members pay each other directly, so there is no pot sitting
       anywhere for anyone to run off with.
     </p>
+    <details style="margin:0 0 16px">
+      <summary style="cursor:pointer;color:var(--muted);font-size:13.5px">What happens if someone stops paying</summary>
+      <p class="why">
+        Be clear about this before you put money in. The contract records who is
+        in the circle and whose turn it is. It does not hold the money and it
+        cannot make anyone pay, so <strong>it cannot recover a missed round for
+        you</strong>. What it does give you is a public record: every
+        contribution is a transaction, so who paid and who did not is visible to
+        everyone, permanently, and cannot be argued about.
+      </p>
+      <p class="why">
+        That is the same trust model as the ajo you already know, where the
+        group is the enforcement. The difference is that the bookkeeping cannot
+        be disputed and nobody is holding the pot. Join circles with people you
+        would already lend money to.
+      </p>
+      <p class="why">
+        Order is the order people joined, and it is fixed once the circle
+        starts. Nobody can jump the queue, and no shuffle happens that you would
+        have to trust.
+      </p>
+    </details>
 
     <div class="field">
       <label for="ci-id">Open a circle</label>

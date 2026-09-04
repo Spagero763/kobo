@@ -1,5 +1,6 @@
 import express, { type Request, type Response } from "express";
 import { join } from "node:path";
+import { readFile } from "node:fs/promises";
 import { isAddress } from "viem";
 import { MENTO_CURRENCIES, NGNM } from "./config.js";
 import { canPayGasWith, feeCurrencyAllowlist } from "./chain.js";
@@ -25,6 +26,42 @@ import { toString } from "qrcode";
 export function createApp() {
   const app = express();
   app.use(express.json());
+
+  /**
+   * The cost figures are rendered into the page rather than fetched by script.
+   *
+   * They were filled in on load, which works in a browser and not for anything
+   * that reads the HTML: every agent that reviewed this saw skeleton
+   * placeholders where the fee should be, and reported it could not tell what a
+   * transfer costs. A price that only appears if you execute JavaScript is not
+   * a published price.
+   */
+  let cached: { at: number; html: string } | null = null;
+  const naira = (v: string) =>
+    Number(v).toLocaleString("en-NG", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+
+  app.get(["/", "/index.html"], async (_req: Request, res: Response) => {
+    try {
+      if (cached && Date.now() - cached.at < 30_000) return res.type("html").send(cached.html);
+
+      const [page, c] = await Promise.all([
+        readFile(join(process.cwd(), "public", "index.html"), "utf8"),
+        cost("5000"),
+      ]);
+
+      const html = page
+        .replace('id="c-arrives" class="skel">₦5,000<', `id="c-arrives">₦${naira(c.arrives)}<`)
+        .replace('id="c-fee" class="skel">₦0.00<', `id="c-fee">₦${naira(c.estimatedFee)}<`)
+        .replace('id="c-total" class="skel">₦0.00<', `id="c-total">₦${naira(c.total)}<`);
+
+      cached = { at: Date.now(), html };
+      res.type("html").send(html);
+    } catch {
+      // A price we cannot read is not a reason to take the page down.
+      res.sendFile(join(process.cwd(), "public", "index.html"));
+    }
+  });
+
   app.use(express.static(join(process.cwd(), "public"), { index: "index.html" }));
 
   const fail = (res: Response, e: unknown, code = 400) =>

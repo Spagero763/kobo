@@ -58,6 +58,11 @@ export async function balanceOf(address: `0x${string}`): Promise<bigint> {
  */
 export async function quote(from: `0x${string}`, to: string, amount: string): Promise<Quote> {
   if (!isAddress(to)) throw new Error("recipient is not a valid address");
+  // Checked before parsing, so a bad amount is answered in Kobo's own words
+  // rather than by leaking whatever the decimal parser threw.
+  if (!/^\d*\.?\d+$/.test(amount.trim())) {
+    throw new Error("amount must be a number, like 5000 or 1500.50");
+  }
   const value = parseUnits(amount, 18);
   if (value <= 0n) throw new Error("amount must be greater than zero");
 
