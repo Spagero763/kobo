@@ -247,6 +247,15 @@
 
   <section class="card" id="send-card" data-panel="send" hidden>
     <div class="field">
+      <label for="token">Which naira</label>
+      <select id="token">
+        <option value="NGNm">NGNm, Mento naira</option>
+        <option value="cNGN">cNGN, the regulated naira</option>
+      </select>
+      <div class="note hide" id="token-note"></div>
+    </div>
+
+    <div class="field">
       <label for="to">Send to</label>
       <input id="to" class="mono" placeholder="0x..." autocomplete="off" spellcheck="false" inputmode="text">
       <div class="err" id="to-err"></div>

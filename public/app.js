@@ -220,20 +220,40 @@ async function refreshQuote() {
     btn.textContent = $("amt").value.trim() ? "Check the details" : "Enter an amount";
     return;
   }
+  const token = $("token").value;
   try {
-    const url = `/v1/quote?from=${state.account}&to=${$("to").value.trim()}&amount=${$("amt").value.trim()}`;
+    // Both naira quote the fee in NGNm, because only NGNm can pay for gas on
+    // Celo. So a cNGN sender is told about their naira float here, not at the
+    // wallet.
+    const url = `/v1/naira/${token}/quote?from=${state.account}&to=${$("to").value.trim()}&amount=${$("amt").value.trim()}`;
     const res = await fetch(url);
     const q = await res.json();
     if (!res.ok) throw new Error(q.error || "quote failed");
 
     state.quote = q;
-    $("q-arrives").textContent = `₦${fmt(q.arrives)}`;
-    $("q-fee").textContent = `₦${fmt(q.estimatedFee)}`;
-    $("q-total").textContent = `₦${fmt(Number(q.amount) + Number(q.estimatedFee))}`;
+    $("q-arrives").textContent = `${fmt(q.arrives)} ${token}`;
+    $("q-fee").textContent = `₦${fmt(q.estimatedFee)} NGNm`;
+    $("q-total").textContent =
+      token === "NGNm"
+        ? `₦${fmt(Number(q.amount) + Number(q.estimatedFee))}`
+        : `${fmt(q.amount)} cNGN and ₦${fmt(q.estimatedFee)} NGNm`;
     $("quote").classList.add("on");
 
-    btn.disabled = !q.sufficient;
-    btn.textContent = q.sufficient ? `Send ₦${fmt(q.amount)}` : "Not enough naira";
+    const note = $("token-note");
+    if (q.note) {
+      note.textContent = q.note;
+      note.classList.remove("hide");
+    } else {
+      note.classList.add("hide");
+    }
+
+    const canSend = q.sufficient && q.gasSufficient !== false;
+    btn.disabled = !canSend;
+    btn.textContent = !q.sufficient
+      ? `Not enough ${token}`
+      : q.gasSufficient === false
+        ? "Not enough NGNm for the fee"
+        : `Send ${fmt(q.amount)} ${token}`;
   } catch (e) {
     state.quote = null;
     $("quote").classList.remove("on");
@@ -252,7 +272,7 @@ async function submit() {
   try {
     await ensureCelo();
 
-    const res = await fetch("/v1/transfer", {
+    const res = await fetch(`/v1/naira/${$("token").value}/build`, {
       method: "POST",
       headers: { "content-type": "application/json" },
       body: JSON.stringify({ to: $("to").value.trim(), amount: $("amt").value.trim() }),
@@ -279,7 +299,7 @@ async function submit() {
     }
 
     step(3);
-    status("ok", `₦${fmt(state.quote.amount)} sent.`, link);
+    status("ok", `${fmt(state.quote.amount)} ${state.quote.token} sent.`, link);
     $("amt").value = "";
     $("quote").classList.remove("on");
     await loadBalance();
@@ -310,6 +330,11 @@ $("connect").addEventListener("click", connect);
 $("send").addEventListener("click", submit);
 $("to").addEventListener("input", scheduleQuote);
 $("amt").addEventListener("input", scheduleQuote);
+$("token").addEventListener("change", () => {
+  // The balance shown is NGNm, so Max means something different per token.
+  loadBalance();
+  scheduleQuote();
+});
 
 document.querySelectorAll("[data-amt]").forEach((b) =>
   b.addEventListener("click", () => {
