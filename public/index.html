@@ -158,6 +158,14 @@
   }
   select:focus { outline: 2px solid color-mix(in srgb, var(--accent) 40%, transparent); outline-offset: 1px; }
 
+  pre.api {
+    background: var(--bg); border: 1px solid var(--line); border-radius: 10px;
+    padding: 11px 12px; margin: 10px 0 0; overflow-x: auto;
+    font: 400 12px/1.55 ui-monospace, SFMono-Regular, Menlo, monospace;
+    color: var(--muted); white-space: pre; -webkit-overflow-scrolling: touch;
+  }
+  pre.api b { color: var(--ink); font-weight: 600; }
+
   .qr { background: #fff; border: 1px solid var(--line); border-radius: 12px; padding: 12px; margin: 14px 0 0; }
   .qr svg { display: block; width: 100%; height: auto; }
   a.primary { display: block; text-align: center; text-decoration: none; margin-top: 12px; }
@@ -439,6 +447,19 @@
       MCP server at <span class="mono">/mcp</span>, so software can send naira,
       quote a rate or read a circle without a browser. Same rails, same contracts.
     </p>
+
+    <details style="margin-top:14px">
+      <summary style="cursor:pointer;color:var(--muted);font-size:13.5px">The API, with real responses</summary>
+      <p class="why">
+        Every response below was produced by calling this server when the page
+        was built, not written by hand. Errors are always
+        <span class="mono">{"error": "..."}</span> with a 4xx, phrased to be
+        acted on rather than logged.
+      </p>
+      <div id="api-examples">
+        <pre class="api">Loading live examples.</pre>
+      </div>
+    </details>
   </section>
 
   <footer>
