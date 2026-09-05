@@ -178,9 +178,10 @@ const tools: Tool[] = [
     run: async (a) => {
       const token = tokenBySymbol(String(a.symbol ?? ""));
       if (!token) throw new Error(`unknown token ${String(a.symbol)}, expected NGNm or cNGN`);
+      const from = a.from ? address(a.from, "from") : undefined;
       return {
-        transaction: buildNairaTransfer(token, address(a.to, "to"), amount(a.amount)),
-        note: "sign with the sender's own wallet; the fee comes out of NGNm",
+        transaction: await buildNairaTransfer(token, address(a.to, "to"), amount(a.amount), from),
+        note: "sign with the sender's own wallet; the fee comes out of the token named in feeCurrency",
       };
     },
   },

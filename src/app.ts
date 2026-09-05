@@ -242,9 +242,14 @@ export function createApp() {
       const { to, amount } = req.body ?? {};
       if (!to || !isAddress(to)) throw new Error("to must be a valid address");
       if (!amount) throw new Error("amount is required");
+      const { from } = req.body ?? {};
+      if (from && !isAddress(from)) throw new Error("from must be a valid address");
+      const transaction = await buildNairaTransfer(token, to, String(amount), from);
       res.json({
-        transaction: buildNairaTransfer(token, to, String(amount)),
-        note: "sign this with your own wallet. the fee comes out of NGNm.",
+        transaction,
+        note: from
+          ? "sign this with your own wallet. the fee comes out of the token named in feeCurrency."
+          : "sign this with your own wallet. pass `from` and the fee currency is picked from what you actually hold.",
       });
     } catch (e) {
       fail(res, e);
