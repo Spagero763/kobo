@@ -468,6 +468,61 @@
       <div id="api-examples">
         <pre class="api">Loading live examples.</pre>
       </div>
+
+      <p class="why" style="margin-top:14px"><strong>What the fields mean</strong>, so nothing has to be guessed:</p>
+      <dl class="cost">
+        <div class="row stack">
+          <dt>amount, arrives</dt>
+          <dd>
+            What you asked to send, and what lands with the recipient. They are
+            equal on purpose: the fee is charged on top, never taken out of the
+            transfer, so nobody receives less than the number you typed.
+          </dd>
+        </div>
+        <div class="row stack">
+          <dt>estimatedFee, maximumFee</dt>
+          <dd>
+            What it should cost, and the ceiling you authorise. Under EIP-1559
+            you pay base plus tip and the rest is refunded, so the real cost
+            lands near the estimate. Check affordability against the maximum,
+            not the estimate, or a busy block turns a quote that said yes into a
+            transfer that fails.
+          </dd>
+        </div>
+        <div class="row stack">
+          <dt>feeCurrency</dt>
+          <dd>
+            Which token the fee comes out of, chosen from what the sender
+            already holds. It is not always the token being sent, because cNGN
+            cannot pay for its own gas. Never CELO.
+          </dd>
+        </div>
+        <div class="row stack">
+          <dt>sufficient, gasSufficient</dt>
+          <dd>
+            Whether the balance covers the transfer, and separately whether
+            anything on hand can cover the fee. They are separate because the
+            two can come from different tokens. When either is false,
+            <span class="mono">note</span> says what to do about it.
+          </dd>
+        </div>
+        <div class="row stack">
+          <dt>feeOptions</dt>
+          <dd>
+            Every token Celo accepts as gas that this wallet holds, with the
+            fee priced in each. Shown so a caller can see why one was picked
+            rather than trusting the choice.
+          </dd>
+        </div>
+        <div class="row stack">
+          <dt>payouts</dt>
+          <dd>
+            On <span class="mono">/v1/currencies</span>: the currencies a naira
+            balance can be <em>paid out in</em>, not currencies you can hold
+            here. Send naira, the recipient gets shillings.
+          </dd>
+        </div>
+      </dl>
     </details>
   </section>
 
