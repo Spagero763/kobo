@@ -98,19 +98,26 @@ function provider() {
   return window.ethereum ?? null;
 }
 
+/* Reads the balance of whichever naira is selected. It has to follow the picker:
+   showing an NGNm balance under a cNGN heading would have someone try to send
+   money they do not hold, and Max would fill from the wrong token. */
 async function loadBalance() {
   if (!state.account) return;
   const el = $("bal");
+  const symbol = $("token")?.value ?? "NGNm";
+  $("bal-unit").textContent = symbol;
   el.classList.add("skel");
   try {
-    const res = await fetch(`/v1/balance/${state.account}`);
+    const res = await fetch(`/v1/naira/${symbol}/balance/${state.account}`);
     if (!res.ok) throw new Error("balance unavailable");
     const { balance } = await res.json();
     el.textContent = fmt(balance);
     el.dataset.raw = balance;
+    el.dataset.token = symbol;
   } catch {
     el.textContent = "unavailable";
     el.dataset.raw = "";
+    el.dataset.token = "";
   } finally {
     el.classList.remove("skel");
   }
@@ -275,7 +282,13 @@ async function submit() {
     const res = await fetch(`/v1/naira/${$("token").value}/build`, {
       method: "POST",
       headers: { "content-type": "application/json" },
-      body: JSON.stringify({ to: $("to").value.trim(), amount: $("amt").value.trim() }),
+      // from lets the server pick the fee currency out of what this wallet
+      // actually holds, rather than assuming naira is there.
+      body: JSON.stringify({
+        from: state.account,
+        to: $("to").value.trim(),
+        amount: $("amt").value.trim(),
+      }),
     });
     const built = await res.json();
     if (!res.ok) throw new Error(built.error || "could not build the transfer");
@@ -331,7 +344,8 @@ $("send").addEventListener("click", submit);
 $("to").addEventListener("input", scheduleQuote);
 $("amt").addEventListener("input", scheduleQuote);
 $("token").addEventListener("change", () => {
-  // The balance shown is NGNm, so Max means something different per token.
+  $("amt").value = "";
+  $("quote").classList.remove("on");
   loadBalance();
   scheduleQuote();
 });
@@ -344,11 +358,15 @@ document.querySelectorAll("[data-amt]").forEach((b) =>
 );
 
 $("chip-max").addEventListener("click", () => {
-  const raw = $("bal").dataset.raw;
-  if (!raw) return;
-  // Leave the fee ceiling behind so Max cannot produce a transfer that fails.
-  const spendable = Math.max(0, Number(raw) - 6);
-  $("amt").value = spendable.toFixed(2);
+  const el = $("bal");
+  const raw = el.dataset.raw;
+  if (!raw || el.dataset.token !== $("token").value) return;
+
+  /* Only hold back a fee margin when the fee comes out of this same token.
+     A cNGN send pays its fee in naira, so the whole cNGN balance is spendable
+     and reserving from it would strand money for no reason. */
+  const margin = $("token").value === "NGNm" ? 10 : 0;
+  $("amt").value = Math.max(0, Number(raw) - margin).toFixed(2);
   scheduleQuote();
 });
 
