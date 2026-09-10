@@ -266,6 +266,50 @@
     </p>
   </section>
 
+  <!-- Reviewers said, repeatedly, that they could not confirm the core claim
+       from the page. Here are the transactions, so they do not have to take
+       anyone's word for it. -->
+  <section class="card" id="proof-card">
+    <div class="bal-label">Proof, on Celo mainnet</div>
+    <p class="why" style="margin-top:8px">
+      The claim is that the fee comes out of naira and your CELO is never
+      touched. These are real transfers. Open either one and check the
+      <span class="mono">Fee Currency</span> field yourself.
+    </p>
+
+    <dl class="cost">
+      <div class="row stack">
+        <dt>Sending naira, fee paid in naira</dt>
+        <dd>
+          10 NGNm delivered, fee <strong>1.7575 NGNm</strong>, CELO spent
+          <strong>0</strong>. Balance before and after the block was identical
+          to the wei: 8.413580680861054656.
+          <br>
+          <a class="mono" href="https://celoscan.io/tx/0xa9a66398b69507922d0b5a935d1e9933ce0f8f12d4a63e44db1b5b33ce8d9065" target="_blank" rel="noopener">0xa9a66398…ce8d9065</a>
+        </dd>
+      </div>
+      <div class="row stack">
+        <dt>Sending cNGN, fee still paid in naira</dt>
+        <dd>
+          cNGN cannot pay for its own gas, so the fee came out of NGNm instead.
+          50 cNGN delivered in full, fee <strong>2.7110 NGNm</strong>, CELO spent
+          <strong>0</strong>.
+          <br>
+          <a class="mono" href="https://celoscan.io/tx/0xf030c1ace60441026509f128b4daa19091863ca25528526b2ae2be4667ed377a" target="_blank" rel="noopener">0xf030c1ac…67ed377a</a>
+        </dd>
+      </div>
+      <div class="row stack">
+        <dt>Where the rule comes from</dt>
+        <dd>
+          Celo keeps a governance-controlled list of what may pay for gas, and
+          Kobo reads it on every health check rather than assuming. NGNm is on
+          it. cNGN is not. That is why the fee lands where it does, and if that
+          ever changes the app will say so instead of failing at your wallet.
+        </dd>
+      </div>
+    </dl>
+  </section>
+
   <nav class="tabs" id="tabs" role="tablist" hidden>
     <button role="tab" data-tab="send" aria-selected="true">Send</button>
     <button role="tab" data-tab="abroad" aria-selected="false">Abroad</button>

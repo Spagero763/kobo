@@ -192,6 +192,7 @@ async function connect() {
     $("addr").textContent = short(state.account);
     $("connect-wrap").hidden = true;
     $("cost-card").hidden = true;
+    $("proof-card").hidden = true;
     $("tabs").hidden = false;
     showTab("send");
     await loadBalance();
