@@ -1,6 +1,5 @@
 const CELO_HEX = "0xa4ec";
 const CELO_ID = 42220;
-const NGNM = "0xE2702Bd97ee33c88c8f6f92DA3B733608aa76F71";
 
 const $ = (id) => document.getElementById(id);
 const reduced = matchMedia("(prefers-reduced-motion: reduce)").matches;
@@ -11,11 +10,31 @@ const short = (a) => `${a.slice(0, 6)}...${a.slice(-4)}`;
 
 const state = { account: null, chainId: null, quote: null, feeInNaira: false, busy: false };
 
-/* Wallets differ on Celo's fee currency field. MiniPay honours it, so gas comes
-   out of the naira balance. Injected desktop wallets drop it and charge CELO,
-   which the sender may not have, so say so rather than let the send fail. */
+/* Wallets differ on Celo's fee currency field, and the difference is not a
+   preference: MetaMask uses the Ethereum-compatible transaction format, which
+   has no feeCurrency field at all, so it always charges CELO. MiniPay and
+   Valora implement CIP-64 and take the fee from the token instead.
+
+   This is only used to set expectations before signing. The field is sent
+   regardless, because a wallet that ignores it is no worse off. */
 function detectFeeSupport(provider) {
-  return Boolean(provider?.isMiniPay);
+  if (!provider) return false;
+  return Boolean(provider.isMiniPay || provider.isValora) || !provider.isMetaMask;
+}
+
+/* Distinguishes "this wallet refuses the feeCurrency field" from a genuine
+   failure, so the retry never swallows a real error like a rejected signature
+   or an empty balance. */
+function rejectedFeeCurrency(e) {
+  if (e?.code === 4001) return false;
+  const raw = `${e?.message ?? ""} ${e?.data?.message ?? ""}`.toLowerCase();
+  return (
+    raw.includes("feecurrency") ||
+    raw.includes("unknown parameter") ||
+    raw.includes("invalid parameters") ||
+    raw.includes("unsupported") ||
+    raw.includes("unrecognized field")
+  );
 }
 
 function setNet(kind, text) {
@@ -183,7 +202,8 @@ async function connect() {
       note.classList.add("hide");
     } else {
       note.classList.remove("hide");
-      note.textContent = "This wallet pays gas in CELO, so you need a small CELO balance. Open Kobo in MiniPay to pay the fee in naira instead.";
+      note.textContent =
+        "MetaMask cannot pay fees in naira. It uses the Ethereum transaction format, which has no field for it, so this send will need a small CELO balance. Open Kobo in MiniPay or Valora and the fee comes out of your naira instead.";
     }
   } catch (e) {
     status("bad", plainError(e));
@@ -229,21 +249,25 @@ async function refreshQuote() {
   }
   const token = $("token").value;
   try {
-    // Both naira quote the fee in NGNm, because only NGNm can pay for gas on
-    // Celo. So a cNGN sender is told about their naira float here, not at the
-    // wallet.
     const url = `/v1/naira/${token}/quote?from=${state.account}&to=${$("to").value.trim()}&amount=${$("amt").value.trim()}`;
     const res = await fetch(url);
     const q = await res.json();
     if (!res.ok) throw new Error(q.error || "quote failed");
 
     state.quote = q;
-    $("q-arrives").textContent = `${fmt(q.arrives)} ${token}`;
-    $("q-fee").textContent = `₦${fmt(q.estimatedFee)} NGNm`;
-    $("q-total").textContent =
-      token === "NGNm"
-        ? `₦${fmt(Number(q.amount) + Number(q.estimatedFee))}`
-        : `${fmt(q.amount)} cNGN and ₦${fmt(q.estimatedFee)} NGNm`;
+
+    /* The fee currency is whatever the server found in this wallet, so it is
+       not always naira. Naming it wrongly would tell someone their dollars are
+       naira, so every figure below is labelled with what it actually is. */
+    const fee = q.feeCurrency ?? "NGNm";
+    const money = (v, sym) => (sym === "NGNm" || sym === "cNGN" ? `₦${fmt(v)}` : `${fmt(v)}`);
+    const feePaidInSameToken = fee === token;
+
+    $("q-arrives").textContent = `${money(q.arrives, token)} ${token}`;
+    $("q-fee").textContent = `${money(q.estimatedFee, fee)} ${fee}`;
+    $("q-total").textContent = feePaidInSameToken
+      ? `${money(Number(q.amount) + Number(q.estimatedFee), token)} ${token}`
+      : `${money(q.amount, token)} ${token} and ${money(q.estimatedFee, fee)} ${fee}`;
     $("quote").classList.add("on");
 
     const note = $("token-note");
@@ -259,8 +283,8 @@ async function refreshQuote() {
     btn.textContent = !q.sufficient
       ? `Not enough ${token}`
       : q.gasSufficient === false
-        ? "Not enough NGNm for the fee"
-        : `Send ${fmt(q.amount)} ${token}`;
+        ? "Nothing here can pay the fee"
+        : `Send ${money(q.amount, token)}`;
   } catch (e) {
     state.quote = null;
     $("quote").classList.remove("on");
@@ -293,12 +317,33 @@ async function submit() {
     const built = await res.json();
     if (!res.ok) throw new Error(built.error || "could not build the transfer");
 
-    const tx = { from: state.account, to: built.transaction.to, data: built.transaction.data, gas: built.transaction.gas };
-    if (state.feeInNaira) tx.feeCurrency = NGNM;
+    /* Always ask for the fee in a token, using whichever one the server picked
+       from this wallet's balances. Wallets that implement CIP-64 honour it;
+       MetaMask uses the Ethereum-compatible format that has no feeCurrency
+       field and drops it, which costs nothing to try. */
+    const tx = {
+      from: state.account,
+      to: built.transaction.to,
+      data: built.transaction.data,
+      gas: built.transaction.gas,
+      feeCurrency: built.transaction.feeCurrency,
+    };
 
     step(0);
     status("work", "Confirm in your wallet.", "Nothing moves until you approve it.");
-    const hash = await p.request({ method: "eth_sendTransaction", params: [tx] });
+
+    let hash;
+    try {
+      hash = await p.request({ method: "eth_sendTransaction", params: [tx] });
+    } catch (e) {
+      // A wallet that validates strictly rejects the field rather than ignoring
+      // it. Retrying without it still sends the money, just with CELO for gas,
+      // which beats failing outright on a wallet we cannot predict.
+      if (!rejectedFeeCurrency(e)) throw e;
+      delete tx.feeCurrency;
+      status("work", "This wallet cannot pay the fee in naira.", "Retrying with CELO for gas.");
+      hash = await p.request({ method: "eth_sendTransaction", params: [tx] });
+    }
 
     step(1);
     const link = `<a href="https://celoscan.io/tx/${hash}" target="_blank" rel="noopener">${short(hash)}</a>`;
