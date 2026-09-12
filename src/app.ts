@@ -2,7 +2,7 @@ import express, { type Request, type Response } from "express";
 import { join } from "node:path";
 import { readFile } from "node:fs/promises";
 import { isAddress } from "viem";
-import { MENTO_CURRENCIES, NGNM } from "./config.js";
+import { MENTO_CURRENCIES, NGNM, config } from "./config.js";
 import { canPayGasWith, feeCurrencyAllowlist } from "./chain.js";
 import { balanceOf, buildTransfer, cost, quote } from "./transfer.js";
 import { nairaRate } from "./swap.js";
@@ -18,14 +18,31 @@ import {
 } from "./circle.js";
 import { handleMcp } from "./mcp.js";
 import { buildCrossSend, crossQuote } from "./crosspay.js";
-import { balanceOfToken, fromUnits, tokenBySymbol, withGasFlags } from "./tokens.js";
+import { TOKENS, balanceOfToken, fromUnits, tokenBySymbol, withGasFlags } from "./tokens.js";
 import { buildNairaTransfer, quoteNaira } from "./naira.js";
 import { buildLink, status as personhoodStatus } from "./personhood.js";
+import { ChainUnavailable, receipt } from "./receipt.js";
+import { PAID_ROUTES, PAYMENT_ASSETS, paywall } from "./paywall.js";
 import { toString } from "qrcode";
 
 export function createApp() {
   const app = express();
   app.use(express.json());
+  // Charges only the routes in PAID_ROUTES. Everything else passes straight through.
+  app.use(paywall());
+
+  const listTokens = async (kind?: "naira" | "dollar") =>
+    (await withGasFlags())
+      .filter((t) => !kind || t.kind === kind)
+      .map((t) => ({
+        symbol: t.symbol,
+        label: t.label,
+        kind: t.kind,
+        address: t.address,
+        decimals: t.decimals,
+        canPayOwnGas: t.payGas,
+      }));
+  const feePaidIn = "whichever allowlisted token the sender already holds, naira first";
 
   /**
    * The cost figures are rendered into the page rather than fetched by script.
@@ -74,18 +91,10 @@ export function createApp() {
       run(`GET /v1/quote?from=${example.slice(0, 8)}...&to=${recipient.slice(0, 8)}...&amount=1000`, () =>
         quote(example as `0x${string}`, recipient, "1000"),
       ),
-      run("GET /v1/naira", async () => {
-        const tokens = await withGasFlags();
-        return {
-          tokens: tokens.map((t) => ({
-            symbol: t.symbol,
-            address: t.address,
-            decimals: t.decimals,
-            canPayOwnGas: t.payGas,
-          })),
-          feeAlwaysPaidIn: "NGNm",
-        };
-      }),
+      run("GET /v1/tokens", async () => ({ tokens: await listTokens(), feePaidIn })),
+      run("GET /v1/receipt/0xf030c1ac...   (paid, $0.01 over x402)", () =>
+        receipt("0xf030c1ace60441026509f128b4daa19091863ca25528526b2ae2be4667ed377a"),
+      ),
       run("GET /v1/quote?amount=-5   (an error)", () =>
         quote(example as `0x${string}`, recipient, "-5"),
       ),
@@ -182,32 +191,36 @@ export function createApp() {
     }
   });
 
-  // Both naira on Celo. They are different tokens from different issuers, so
-  // the symbol is required rather than guessed.
+  // Naira and dollars. They come from different issuers with different
+  // decimals, so the symbol is required rather than guessed. The /v1/naira
+  // paths predate the dollars and stay working.
+
+  const unknown = (s: string) => `unknown token ${s}, expected one of ${Object.keys(TOKENS).join(", ")}`;
 
   app.get("/v1/naira", async (_req: Request, res: Response) => {
     try {
-      const tokens = await withGasFlags();
       res.json({
-        tokens: tokens.map((t) => ({
-          symbol: t.symbol,
-          label: t.label,
-          address: t.address,
-          decimals: t.decimals,
-          canPayOwnGas: t.payGas,
-        })),
-        feeAlwaysPaidIn: "NGNm",
-        note: "cNGN cannot pay for its own gas on Celo, so its fee is taken in NGNm. Either way the sender never needs CELO.",
+        tokens: await listTokens("naira"),
+        feePaidIn,
+        note: "cNGN cannot pay for its own gas on Celo, so its fee comes out of NGNm or dollars the sender holds. Either way the sender never needs CELO.",
       });
     } catch (e) {
       fail(res, e);
     }
   });
 
-  app.get("/v1/naira/:symbol/balance/:address", async (req: Request, res: Response) => {
+  app.get("/v1/tokens", async (_req: Request, res: Response) => {
+    try {
+      res.json({ tokens: await listTokens(), feePaidIn });
+    } catch (e) {
+      fail(res, e);
+    }
+  });
+
+  app.get(["/v1/naira/:symbol/balance/:address", "/v1/send/:symbol/balance/:address"], async (req: Request, res: Response) => {
     try {
       const token = tokenBySymbol(req.params.symbol);
-      if (!token) throw new Error(`unknown token ${req.params.symbol}, expected NGNm or cNGN`);
+      if (!token) throw new Error(unknown(req.params.symbol));
       const address = req.params.address;
       if (!isAddress(address)) throw new Error("not a valid address");
       res.json({
@@ -221,10 +234,10 @@ export function createApp() {
     }
   });
 
-  app.get("/v1/naira/:symbol/quote", async (req: Request, res: Response) => {
+  app.get(["/v1/naira/:symbol/quote", "/v1/send/:symbol/quote"], async (req: Request, res: Response) => {
     try {
       const token = tokenBySymbol(req.params.symbol);
-      if (!token) throw new Error(`unknown token ${req.params.symbol}, expected NGNm or cNGN`);
+      if (!token) throw new Error(unknown(req.params.symbol));
       const { from, to, amount } = req.query as Record<string, string>;
       if (!from || !isAddress(from)) throw new Error("from must be a valid address");
       if (!to || !isAddress(to)) throw new Error("to must be a valid address");
@@ -235,10 +248,10 @@ export function createApp() {
     }
   });
 
-  app.post("/v1/naira/:symbol/build", async (req: Request, res: Response) => {
+  app.post(["/v1/naira/:symbol/build", "/v1/send/:symbol/build"], async (req: Request, res: Response) => {
     try {
       const token = tokenBySymbol(req.params.symbol);
-      if (!token) throw new Error(`unknown token ${req.params.symbol}, expected NGNm or cNGN`);
+      if (!token) throw new Error(unknown(req.params.symbol));
       const { to, amount } = req.body ?? {};
       if (!to || !isAddress(to)) throw new Error("to must be a valid address");
       if (!amount) throw new Error("amount is required");
@@ -254,6 +267,32 @@ export function createApp() {
     } catch (e) {
       fail(res, e);
     }
+  });
+
+  // A merchant, or an agent selling something, checks that money really arrived
+  // before handing anything over. Charged a cent over x402, see paywall.ts. A
+  // bad hash is a 400 and is never charged.
+  app.get("/v1/receipt/:hash", async (req: Request, res: Response) => {
+    try {
+      const { to, token, amount } = req.query as Record<string, string | undefined>;
+      res.json(await receipt(req.params.hash, { to, token, amount }));
+    } catch (e) {
+      fail(res, e, e instanceof ChainUnavailable ? 503 : 400);
+    }
+  });
+
+  app.get("/v1/paid", (_req: Request, res: Response) => {
+    res.json({
+      protocol: "x402",
+      network: "eip155:42220",
+      payTo: config.agentAddress,
+      accepts: PAYMENT_ASSETS.map(({ symbol, address }) => ({ symbol, address })),
+      gasNeeded: false,
+      endpoints: Object.entries(PAID_ROUTES).map(([pattern, r]) => {
+        const [method, path] = pattern.split(" ");
+        return { method, path, priceUsd: r.price, description: r.description };
+      }),
+    });
   });
 
   // Proof of personhood. A circle needs to tell one member from the same member

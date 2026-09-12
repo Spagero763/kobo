@@ -103,6 +103,8 @@ export const config = {
   agentPrivateKey: privateKey(),
   attributionTag: env("ATTRIBUTION_TAG"),
   celoRpc: env("CELO_RPC", "https://forno.celo.org"),
+  facilitatorUrl: env("X402_FACILITATOR_URL", "https://api.x402.celo.org").replace(/\/$/, ""),
+  x402ApiKey: env("X402_API_KEY"),
   publicBaseUrl: env("PUBLIC_BASE_URL", "http://localhost:3000").replace(/\/$/, ""),
   port: Number(env("PORT", "3000")),
 };

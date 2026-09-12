@@ -16,6 +16,7 @@
     "naira": "tsx scripts/get-naira.ts",
     "dry-run": "tsx scripts/dry-run.ts",
     "prove:cngn": "tsx scripts/prove-cngn.ts",
+    "prove:send": "tsx scripts/prove-send.ts",
     "verify:tokens": "tsx scripts/verify-tokens.ts",
     "verify:tag": "tsx scripts/verify-tag.ts",
     "verify:selflink": "tsx scripts/verify-selflink.ts",
@@ -30,6 +31,9 @@
   },
   "dependencies": {
     "@celo/attribution-tags": "^0.3.0",
+    "@x402/core": "^2.25.0",
+    "@x402/evm": "^2.25.0",
+    "@x402/express": "^2.25.0",
     "dotenv": "^16.4.5",
     "express": "^4.19.2",
     "qrcode": "^1.5.4",
