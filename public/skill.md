@@ -100,6 +100,56 @@ Pass it to the sender's wallet to sign and broadcast. `feeCurrency` is what make
 the fee come out of naira; a wallet that drops that field will demand CELO and
 the send will fail for a reason that has nothing to do with the balance.
 
+## Send cNGN or dollars
+
+The same three calls work for every supported token: `NGNm`, `cNGN`, `USDT`,
+`USDC`, `USDm`.
+
+```bash
+curl https://kobo-gamma.vercel.app/v1/tokens
+curl "https://kobo-gamma.vercel.app/v1/send/USDT/quote?from=0xSender&to=0xRecipient&amount=5"
+curl -X POST https://kobo-gamma.vercel.app/v1/send/USDT/build \
+  -H "Content-Type: application/json" \
+  -d '{"from":"0xSender","to":"0xRecipient","amount":"5"}'
+```
+
+Pass `from` when building. The fee currency is then picked from what that wallet
+holds, and `feeCurrency` in the transaction may be an adapter address rather
+than a token. That is correct: USD₮ and USDC pay gas through adapters. Read
+`feeCurrency` and `feeInSameToken` in the quote before telling someone what
+leaves their balance.
+
+## Check a payment landed (paid, x402)
+
+Before releasing goods or marking an invoice paid, check the chain rather than a
+screenshot.
+
+```bash
+curl -i "https://kobo-gamma.vercel.app/v1/receipt/0xTxHash?to=0xYou&token=cNGN&amount=5000"
+```
+
+The first call answers `402` with a `PAYMENT-REQUIRED` header: $0.01 in USD₮ or
+USDC on `eip155:42220`. Sign the EIP-3009 authorisation it describes and repeat
+the call with a `PAYMENT-SIGNATURE` header; any x402 v2 client does this for
+you. No gas is needed. The answer:
+
+```json
+{
+  "found": true,
+  "status": "confirmed",
+  "confirmations": 12,
+  "paid": true,
+  "received": "5000",
+  "verdict": "Paid. 5000 cNGN reached 0xF70A...d855, 12 confirmations."
+}
+```
+
+- `paid` is the field to act on. It is false for a failed transaction, a short
+  amount, the wrong token, the wrong recipient, or a hash that does not exist.
+- Only the real token contracts count, so a look-alike token pays nothing.
+- A malformed hash is a `400` and is not charged. A `503` means the chain could
+  not be read; retry, you were not charged.
+
 ## Rates and payout currencies
 
 ```bash
@@ -137,5 +187,6 @@ which one.
 - Celo mainnet only, chain id 42220
 - NGNm is `0xE2702Bd97ee33c88c8f6f92DA3B733608aa76F71`, 18 decimals
 - Amounts are decimal strings in naira. `"100"` is one hundred naira
-- A transfer costs roughly 2 naira in fees
+- A transfer costs roughly 2 naira in fees, or about $0.002 when paid in dollars
 - Kobo holds no funds and signs nothing on anyone's behalf
+- The only paid call is the receipt check, $0.01 over x402. Prices: `/v1/paid`
