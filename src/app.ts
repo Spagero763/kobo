@@ -1,7 +1,7 @@
 import express, { type Request, type Response } from "express";
 import { join } from "node:path";
 import { readFile } from "node:fs/promises";
-import { isAddress } from "viem";
+import { isAddress, isHash } from "viem";
 import { MENTO_CURRENCIES, NGNM, config } from "./config.js";
 import { canPayGasWith, feeCurrencyAllowlist } from "./chain.js";
 import { balanceOf, buildTransfer, cost, quote } from "./transfer.js";
@@ -28,6 +28,12 @@ import { toString } from "qrcode";
 export function createApp() {
   const app = express();
   app.use(express.json());
+  // A malformed hash is answered before the paywall, so nobody is asked to pay
+  // for a question that has no answer.
+  app.get("/v1/receipt/:hash", (req: Request, res: Response, next) => {
+    if (isHash(req.params.hash)) return next();
+    res.status(400).json({ error: "that is not a transaction hash. It should be 0x followed by 64 characters." });
+  });
   // Charges only the routes in PAID_ROUTES. Everything else passes straight through.
   app.use(paywall());
 
