@@ -14,6 +14,7 @@ const CANDIDATES = [
   { symbol: "NGNm", address: NGNM, decimals: 18, label: "naira" },
   { symbol: "USDm", address: "0x765DE816845861e75A25fCA122bb6898B8B1282a", decimals: 18, label: "dollars" },
   { symbol: "USD₮", address: "0x0E2A3e05bc9A16F5292A6170456A710cb89C6f72", decimals: 18, label: "dollars" },
+  { symbol: "USDC", address: "0x2F25deB3848C207fc8E0c34035B3Ba7fC157602B", decimals: 18, label: "dollars" },
 ] as const;
 
 export interface FeeChoice {

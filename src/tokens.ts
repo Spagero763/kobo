@@ -8,18 +8,23 @@ export interface Token {
   decimals: number;
   /** Human name for the asset, as a Nigerian would say it. */
   label: string;
+  kind: "naira" | "dollar";
+  /**
+   * What goes in feeCurrency when this token pays its own gas. Six-decimal
+   * tokens are allowlisted through an adapter, and their own address is refused.
+   */
+  feeAddress?: `0x${string}`;
   /** Whether Celo accepts this token as gas. Verified, not assumed. */
   payGas?: boolean;
 }
 
 /**
- * The two naira on Celo. They are different tokens from different issuers and
- * are not interchangeable.
+ * The two naira on Celo, and the dollars people send alongside them.
  *
  * NGNm is Mento's, 18 decimals, and on the fee currency allowlist, so it can pay
  * for its own gas. cNGN is the SEC-regulated naira from an independent issuer,
- * six decimals, and not on that list, so moving it still needs a gas token. Kobo
- * pays that gas in NGNm, which means a cNGN holder never needs CELO either.
+ * six decimals, and not on that list, so its fee comes out of something else the
+ * sender holds. Neither needs CELO.
  */
 export const TOKENS: Record<string, Token> = {
   NGNm: {
@@ -27,14 +32,41 @@ export const TOKENS: Record<string, Token> = {
     address: NGNM,
     decimals: 18,
     label: "Mento naira",
+    kind: "naira",
   },
   cNGN: {
     symbol: "cNGN",
     address: "0xF6829D7393dAe24509eb1E52eE8e572e2E271a4f",
     decimals: 6,
     label: "Regulated naira",
+    kind: "naira",
+  },
+  USDT: {
+    symbol: "USDT",
+    address: "0x48065fbBE25f71C9282ddf5e1cD6D6A887483D5e",
+    decimals: 6,
+    label: "Tether dollars",
+    kind: "dollar",
+    feeAddress: "0x0E2A3e05bc9A16F5292A6170456A710cb89C6f72",
+  },
+  USDC: {
+    symbol: "USDC",
+    address: "0xcebA9300f2b948710d2653dD7B07f33A8B32118C",
+    decimals: 6,
+    label: "Circle dollars",
+    kind: "dollar",
+    feeAddress: "0x2F25deB3848C207fc8E0c34035B3Ba7fC157602B",
+  },
+  USDm: {
+    symbol: "USDm",
+    address: "0x765DE816845861e75A25fCA122bb6898B8B1282a",
+    decimals: 18,
+    label: "Mento dollars",
+    kind: "dollar",
   },
 };
+
+export const feeAddressOf = (t: Token) => t.feeAddress ?? t.address;
 
 export function tokenBySymbol(symbol: string): Token | null {
   const key = Object.keys(TOKENS).find((k) => k.toLowerCase() === symbol.toLowerCase());

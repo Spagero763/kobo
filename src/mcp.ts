@@ -126,7 +126,7 @@ const tools: Tool[] = [
   {
     name: "kobo_naira_tokens",
     description:
-      "The two naira on Celo and how they differ. NGNm is Mento's and pays its own gas. cNGN is the SEC-regulated one from an independent issuer, has six decimals rather than eighteen, and cannot pay its own gas, so its fee is taken in NGNm. They are not interchangeable.",
+      "Every token Kobo sends: NGNm and cNGN naira, and USDT, USDC and USDm dollars. NGNm is Mento's and pays its own gas. cNGN is the SEC-regulated naira, has six decimals rather than eighteen, and cannot pay its own gas. They are not interchangeable.",
     inputSchema: { type: "object", properties: {} },
     run: async () => {
       const tokens = await withGasFlags();
@@ -134,22 +134,23 @@ const tools: Tool[] = [
         tokens: tokens.map((t) => ({
           symbol: t.symbol,
           label: t.label,
+          kind: t.kind,
           address: t.address,
           decimals: t.decimals,
           canPayOwnGas: t.payGas,
         })),
-        feeAlwaysPaidIn: "NGNm",
+        feePaidIn: "whichever allowlisted token the sender already holds, naira first",
       };
     },
   },
   {
     name: "kobo_naira_quote",
     description:
-      "What it costs to send either naira. The fee is always quoted in NGNm, so a cNGN sender needs a small NGNm balance too. Check gasSufficient as well as sufficient.",
+      "What it costs to send any supported token. The fee comes out of a token the sender holds, named in feeCurrency, and feeInSameToken says whether it is on top of the amount. Check gasSufficient as well as sufficient.",
     inputSchema: {
       type: "object",
       properties: {
-        symbol: { type: "string", description: "NGNm or cNGN" },
+        symbol: { type: "string", description: "NGNm, cNGN, USDT, USDC or USDm" },
         from: { type: "string", description: "sender address" },
         to: { type: "string", description: "recipient address" },
         amount: { type: "string", description: "amount of that token" },
@@ -158,26 +159,27 @@ const tools: Tool[] = [
     },
     run: async (a) => {
       const token = tokenBySymbol(String(a.symbol ?? ""));
-      if (!token) throw new Error(`unknown token ${String(a.symbol)}, expected NGNm or cNGN`);
+      if (!token) throw new Error(`unknown token ${String(a.symbol)}, expected NGNm, cNGN, USDT, USDC or USDm`);
       return quoteNaira(token, address(a.from, "from"), address(a.to, "to"), amount(a.amount));
     },
   },
   {
     name: "kobo_naira_build",
     description:
-      "Build an unsigned transfer of either naira for the sender's own wallet. The fee currency is NGNm regardless of which token is moving, so do not drop that field.",
+      "Build an unsigned transfer of any supported token for the sender's own wallet. Pass from so the fee currency is picked from what that wallet holds. feeCurrency may be an adapter address for USDT or USDC; that is correct, do not drop or replace it.",
     inputSchema: {
       type: "object",
       properties: {
-        symbol: { type: "string", description: "NGNm or cNGN" },
+        symbol: { type: "string", description: "NGNm, cNGN, USDT, USDC or USDm" },
         to: { type: "string", description: "recipient address" },
         amount: { type: "string", description: "amount of that token" },
+        from: { type: "string", description: "sender address, picks the fee currency" },
       },
       required: ["symbol", "to", "amount"],
     },
     run: async (a) => {
       const token = tokenBySymbol(String(a.symbol ?? ""));
-      if (!token) throw new Error(`unknown token ${String(a.symbol)}, expected NGNm or cNGN`);
+      if (!token) throw new Error(`unknown token ${String(a.symbol)}, expected NGNm, cNGN, USDT, USDC or USDm`);
       const from = a.from ? address(a.from, "from") : undefined;
       return {
         transaction: await buildNairaTransfer(token, address(a.to, "to"), amount(a.amount), from),
