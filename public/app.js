@@ -8,6 +8,19 @@ const naira = new Intl.NumberFormat("en-NG", { minimumFractionDigits: 2, maximum
 const fmt = (v) => naira.format(Number(v || 0));
 const short = (a) => `${a.slice(0, 6)}...${a.slice(-4)}`;
 
+const NAIRA = new Set(["NGNm", "cNGN"]);
+const shown = (s) => (s === "USDT" ? "USD₮" : s);
+// Fees on dollars are fractions of a cent, and two decimals would print them as zero.
+const money = (v, sym) => {
+  const n = Number(v || 0);
+  const body = n > 0 && n < 0.01 ? n.toFixed(4) : fmt(n);
+  return NAIRA.has(sym) ? `₦${body}` : `$${body}`;
+};
+const CHIPS = { naira: ["1000", "5000", "20000"], dollar: ["1", "5", "20"] };
+// Held back from Max when the fee comes out of the same token, sized above the
+// fee ceiling so a Max send is never refused for the fee.
+const MARGIN = { NGNm: 10, USDT: 0.1, USDC: 0.1, USDm: 0.1 };
+
 const state = { account: null, chainId: null, quote: null, feeInNaira: false, busy: false };
 
 /* Wallets differ on Celo's fee currency field, and the difference is not a
@@ -55,7 +68,7 @@ function plainError(e) {
     return "Celo is not set up in this wallet yet. Approve the prompt to add it.";
   }
   if (raw.includes("insufficient funds") || raw.includes("exceeds balance")) {
-    return "Not enough naira to cover the amount plus the fee.";
+    return "Not enough balance to cover the amount plus the fee.";
   }
   if (raw.includes("gas required exceeds allowance")) {
     return "Your wallet could not estimate the fee. Try a slightly smaller amount.";
@@ -67,7 +80,7 @@ function plainError(e) {
     return "Another transaction from this wallet is still pending. Wait for it to finish.";
   }
   if (raw.includes("transfer amount exceeds balance")) {
-    return "Your naira balance moved before this went through. Check it and try again.";
+    return "Your balance moved before this went through. Check it and try again.";
   }
   if (raw.includes("failed to fetch") || raw.includes("network error") || raw.includes("timeout")) {
     return "Could not reach the network. Check your connection and try again.";
@@ -117,17 +130,17 @@ function provider() {
   return window.ethereum ?? null;
 }
 
-/* Reads the balance of whichever naira is selected. It has to follow the picker:
+/* Reads the balance of whichever token is selected. It has to follow the picker:
    showing an NGNm balance under a cNGN heading would have someone try to send
    money they do not hold, and Max would fill from the wrong token. */
 async function loadBalance() {
   if (!state.account) return;
   const el = $("bal");
   const symbol = $("token")?.value ?? "NGNm";
-  $("bal-unit").textContent = symbol;
+  $("bal-unit").textContent = shown(symbol);
   el.classList.add("skel");
   try {
-    const res = await fetch(`/v1/naira/${symbol}/balance/${state.account}`);
+    const res = await fetch(`/v1/send/${symbol}/balance/${state.account}`);
     if (!res.ok) throw new Error("balance unavailable");
     const { balance } = await res.json();
     el.textContent = fmt(balance);
@@ -204,7 +217,7 @@ async function connect() {
     } else {
       note.classList.remove("hide");
       note.textContent =
-        "MetaMask cannot pay fees in naira. It uses the Ethereum transaction format, which has no field for it, so this send will need a small CELO balance. Open Kobo in MiniPay or Valora and the fee comes out of your naira instead.";
+        "MetaMask cannot pay fees in naira or dollars. It uses the Ethereum transaction format, which has no field for it, so this send will need a small CELO balance. Open Kobo in MiniPay or Valora and the fee comes out of what you are sending instead.";
     }
   } catch (e) {
     status("bad", plainError(e));
@@ -250,7 +263,7 @@ async function refreshQuote() {
   }
   const token = $("token").value;
   try {
-    const url = `/v1/naira/${token}/quote?from=${state.account}&to=${$("to").value.trim()}&amount=${$("amt").value.trim()}`;
+    const url = `/v1/send/${token}/quote?from=${state.account}&to=${$("to").value.trim()}&amount=${$("amt").value.trim()}`;
     const res = await fetch(url);
     const q = await res.json();
     if (!res.ok) throw new Error(q.error || "quote failed");
@@ -261,14 +274,12 @@ async function refreshQuote() {
        not always naira. Naming it wrongly would tell someone their dollars are
        naira, so every figure below is labelled with what it actually is. */
     const fee = q.feeCurrency ?? "NGNm";
-    const money = (v, sym) => (sym === "NGNm" || sym === "cNGN" ? `₦${fmt(v)}` : `${fmt(v)}`);
-    const feePaidInSameToken = fee === token;
 
-    $("q-arrives").textContent = `${money(q.arrives, token)} ${token}`;
+    $("q-arrives").textContent = `${money(q.arrives, token)} ${shown(token)}`;
     $("q-fee").textContent = `${money(q.estimatedFee, fee)} ${fee}`;
-    $("q-total").textContent = feePaidInSameToken
-      ? `${money(Number(q.amount) + Number(q.estimatedFee), token)} ${token}`
-      : `${money(q.amount, token)} ${token} and ${money(q.estimatedFee, fee)} ${fee}`;
+    $("q-total").textContent = q.feeInSameToken
+      ? `${money(Number(q.amount) + Number(q.estimatedFee), token)} ${shown(token)}`
+      : `${money(q.amount, token)} ${shown(token)} and ${money(q.estimatedFee, fee)} ${fee}`;
     $("quote").classList.add("on");
 
     const note = $("token-note");
@@ -282,7 +293,7 @@ async function refreshQuote() {
     const canSend = q.sufficient && q.gasSufficient !== false;
     btn.disabled = !canSend;
     btn.textContent = !q.sufficient
-      ? `Not enough ${token}`
+      ? `Not enough ${shown(token)}`
       : q.gasSufficient === false
         ? "Nothing here can pay the fee"
         : `Send ${money(q.amount, token)}`;
@@ -304,7 +315,7 @@ async function submit() {
   try {
     await ensureCelo();
 
-    const res = await fetch(`/v1/naira/${$("token").value}/build`, {
+    const res = await fetch(`/v1/send/${$("token").value}/build`, {
       method: "POST",
       headers: { "content-type": "application/json" },
       // from lets the server pick the fee currency out of what this wallet
@@ -358,7 +369,7 @@ async function submit() {
     }
 
     step(3);
-    status("ok", `${fmt(state.quote.amount)} ${state.quote.token} sent.`, link);
+    status("ok", `${money(state.quote.amount, state.quote.token)} ${shown(state.quote.token)} sent.`, link);
     $("amt").value = "";
     $("quote").classList.remove("on");
     await loadBalance();
@@ -389,9 +400,19 @@ $("connect").addEventListener("click", connect);
 $("send").addEventListener("click", submit);
 $("to").addEventListener("input", scheduleQuote);
 $("amt").addEventListener("input", scheduleQuote);
+function setChips() {
+  const token = $("token").value;
+  const amounts = CHIPS[NAIRA.has(token) ? "naira" : "dollar"];
+  document.querySelectorAll("[data-amt]").forEach((b, i) => {
+    b.dataset.amt = amounts[i];
+    b.textContent = money(amounts[i], token).replace(/\.00$/, "");
+  });
+}
+
 $("token").addEventListener("change", () => {
   $("amt").value = "";
   $("quote").classList.remove("on");
+  setChips();
   loadBalance();
   scheduleQuote();
 });
@@ -408,10 +429,10 @@ $("chip-max").addEventListener("click", () => {
   const raw = el.dataset.raw;
   if (!raw || el.dataset.token !== $("token").value) return;
 
-  /* Only hold back a fee margin when the fee comes out of this same token.
-     A cNGN send pays its fee in naira, so the whole cNGN balance is spendable
-     and reserving from it would strand money for no reason. */
-  const margin = $("token").value === "NGNm" ? 10 : 0;
+  /* Only hold back a fee margin when the fee can come out of this same token.
+     cNGN cannot pay its own gas, so the whole cNGN balance is spendable and
+     reserving from it would strand money for no reason. */
+  const margin = MARGIN[$("token").value] ?? 0;
   $("amt").value = Math.max(0, Number(raw) - margin).toFixed(2);
   scheduleQuote();
 });
@@ -446,6 +467,7 @@ function showTab(name) {
     b.setAttribute("aria-selected", String(b.dataset.tab === name));
   });
   if (name === "you") showVerifyState();
+  if (name === "check" && !$("ck-to").value && state.account) $("ck-to").value = state.account;
 }
 
 document.querySelectorAll("[data-tab]").forEach((b) =>
@@ -769,6 +791,126 @@ $("ci-create").addEventListener("click", async () => {
     }
   } catch (e) {
     panelStatus("ci", "bad", plainError(e));
+  }
+});
+
+/* Checking a payment. It costs a cent over x402: the wallet signs a USD₮ or
+   USDC authorisation, the Celo facilitator settles it, and nobody needs gas. */
+const PAY_ASSETS = {
+  "0x48065fbbe25f71c9282ddf5e1cd6d6a887483d5e": "USDT",
+  "0xceba9300f2b948710d2653dd7b07f33a8b32118c": "USDC",
+};
+const b64 = (o) => btoa(unescape(encodeURIComponent(JSON.stringify(o))));
+const unb64 = (s) => JSON.parse(decodeURIComponent(escape(atob(s))));
+const nonce = () => "0x" + [...crypto.getRandomValues(new Uint8Array(32))].map((x) => x.toString(16).padStart(2, "0")).join("");
+
+async function payFor(path) {
+  const first = await fetch(path);
+  if (first.status !== 402) return first;
+  const challenge = unb64(first.headers.get("PAYMENT-REQUIRED"));
+
+  // Pay in whichever of the accepted dollars this wallet actually has.
+  const options = await Promise.all(
+    challenge.accepts.map(async (a) => {
+      const sym = PAY_ASSETS[a.asset.toLowerCase()];
+      if (!sym) return null;
+      const r = await fetch(`/v1/send/${sym}/balance/${state.account}`).then((x) => (x.ok ? x.json() : null)).catch(() => null);
+      return r && Number(r.balance) * 1e6 >= Number(a.amount) ? { a, sym } : null;
+    }),
+  );
+  const pick = options.find(Boolean);
+  if (!pick) throw new Error("A check costs $0.01 in USD₮ or USDC, and this wallet holds neither.");
+
+  const { a, sym } = pick;
+  const authorization = {
+    from: state.account,
+    to: a.payTo,
+    value: a.amount,
+    validAfter: "0",
+    validBefore: String(Math.floor(Date.now() / 1000) + (a.maxTimeoutSeconds ?? 300)),
+    nonce: nonce(),
+  };
+  const typed = {
+    types: {
+      EIP712Domain: [
+        { name: "name", type: "string" },
+        { name: "version", type: "string" },
+        { name: "chainId", type: "uint256" },
+        { name: "verifyingContract", type: "address" },
+      ],
+      TransferWithAuthorization: [
+        { name: "from", type: "address" },
+        { name: "to", type: "address" },
+        { name: "value", type: "uint256" },
+        { name: "validAfter", type: "uint256" },
+        { name: "validBefore", type: "uint256" },
+        { name: "nonce", type: "bytes32" },
+      ],
+    },
+    primaryType: "TransferWithAuthorization",
+    domain: { name: a.extra.name, version: a.extra.version, chainId: CELO_ID, verifyingContract: a.asset },
+    message: authorization,
+  };
+
+  panelStatus("ck", "work", `Sign $0.01 in ${shown(sym)}.`, "A signature, not a transaction. No gas.");
+  const signature = await provider().request({
+    method: "eth_signTypedData_v4",
+    params: [state.account, JSON.stringify(typed)],
+  });
+
+  panelStatus("ck", "work", "Reading the chain.");
+  const header = b64({ x402Version: challenge.x402Version ?? 2, payload: { authorization, signature }, resource: challenge.resource, accepted: a });
+  return fetch(path, { headers: { "PAYMENT-SIGNATURE": header } });
+}
+
+$("ck-go").addEventListener("click", async () => {
+  const hash = $("ck-hash").value.trim();
+  const to = $("ck-to").value.trim();
+  const amount = $("ck-amt").value.trim();
+  const token = $("ck-token").value;
+
+  $("ck-hash-err").textContent = /^0x[0-9a-fA-F]{64}$/.test(hash) ? "" : "A transaction hash is 0x followed by 64 characters.";
+  $("ck-to-err").textContent = /^0x[a-fA-F0-9]{40}$/.test(to) ? "" : "That is not a valid Celo address.";
+  if ($("ck-hash-err").textContent || $("ck-to-err").textContent || state.busy) return;
+
+  state.busy = true;
+  $("ck-go").disabled = true;
+  $("ck-result").hidden = true;
+  try {
+    await ensureCelo();
+    const q = new URLSearchParams({ to, token });
+    if (Number(amount) > 0) q.set("amount", amount);
+    const res = await payFor(`/v1/receipt/${hash}?${q}`);
+    const r = await res.json().catch(() => ({}));
+    if (!res.ok) {
+      throw new Error(r.error || (res.status === 402 ? "The payment did not go through, so nothing was charged." : "The check did not complete."));
+    }
+
+    const settled = res.headers.get("PAYMENT-RESPONSE");
+    const paidTx = settled ? unb64(settled).transaction : null;
+    const links = [
+      r.found ? `<a href="https://celoscan.io/tx/${hash}" target="_blank" rel="noopener">their transaction</a>` : "",
+      paidTx ? `<a href="https://celoscan.io/tx/${paidTx}" target="_blank" rel="noopener">your $0.01</a>` : "",
+    ].filter(Boolean).join(" · ");
+    panelStatus("ck", r.paid ? "ok" : "bad", r.verdict, links);
+
+    if (r.found && r.status && r.status !== "pending") {
+      const rows = [
+        ["Status", r.status],
+        ["When", new Date(r.time).toLocaleString()],
+        ["Confirmations", r.confirmations],
+        ["Arrived", r.received !== undefined ? `${money(r.received, token)} ${shown(token)}` : null],
+        ["Sent from", short(r.from)],
+        ["Fee paid in", r.fee?.currency],
+      ].filter(([, v]) => v !== null && v !== undefined);
+      $("ck-result").innerHTML = `<dl class="cost">${rows.map(([k, v]) => `<div class="row"><dt>${k}</dt><dd>${v}</dd></div>`).join("")}</dl>`;
+      $("ck-result").hidden = false;
+    }
+  } catch (e) {
+    panelStatus("ck", "bad", e?.code ? plainError(e) : e.message);
+  } finally {
+    state.busy = false;
+    $("ck-go").disabled = false;
   }
 });
 

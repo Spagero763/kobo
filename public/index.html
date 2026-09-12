@@ -114,6 +114,7 @@
   input[aria-invalid="true"] { border-color: var(--danger); background: color-mix(in srgb, var(--danger) 4%, var(--surface)); }
   input[aria-invalid="true"]:focus { box-shadow: 0 0 0 3.5px color-mix(in srgb, var(--danger) 13%, transparent); }
   .field { margin-bottom: 15px; }
+  .pair { display: grid; grid-template-columns: 1fr 7.5rem; gap: 8px; }
   .err { font-size: 12.5px; color: var(--danger); margin-top: 6px; min-height: 1em; }
 
   .chips { display: flex; gap: 7px; margin-top: 9px; flex-wrap: wrap; }
@@ -334,15 +335,19 @@
     <button role="tab" data-tab="send" aria-selected="true">Send</button>
     <button role="tab" data-tab="abroad" aria-selected="false">Abroad</button>
     <button role="tab" data-tab="circles" aria-selected="false">Circles</button>
+    <button role="tab" data-tab="check" aria-selected="false">Check</button>
     <button role="tab" data-tab="you" aria-selected="false">You</button>
   </nav>
 
   <section class="card" id="send-card" data-panel="send" hidden>
     <div class="field">
-      <label for="token">Which naira</label>
+      <label for="token">What to send</label>
       <select id="token">
         <option value="NGNm">NGNm, Mento naira</option>
         <option value="cNGN">cNGN, the regulated naira</option>
+        <option value="USDT">USD₮, Tether dollars</option>
+        <option value="USDC">USDC dollars</option>
+        <option value="USDm">USDm, Mento dollars</option>
       </select>
       <div class="note hide" id="token-note"></div>
     </div>
@@ -510,6 +515,56 @@
     </details>
   </section>
 
+  <section class="card" data-panel="check" hidden>
+    <p class="lede">
+      Someone says they paid you. Check before you hand anything over. A
+      screenshot or an SMS alert can be faked, a transaction on Celo cannot, and
+      only the real naira and dollar contracts count here, so a look-alike token
+      named cNGN moves nothing.
+    </p>
+
+    <div class="field">
+      <label for="ck-hash">Transaction hash they gave you</label>
+      <input id="ck-hash" class="mono" placeholder="0x..." autocomplete="off" spellcheck="false">
+      <div class="err" id="ck-hash-err"></div>
+    </div>
+
+    <div class="field">
+      <label for="ck-amt">You were expecting</label>
+      <div class="pair">
+        <input id="ck-amt" type="text" inputmode="decimal" placeholder="5000" autocomplete="off">
+        <select id="ck-token">
+          <option value="NGNm">NGNm</option>
+          <option value="cNGN">cNGN</option>
+          <option value="USDT">USD₮</option>
+          <option value="USDC">USDC</option>
+          <option value="USDm">USDm</option>
+        </select>
+      </div>
+    </div>
+
+    <div class="field">
+      <label for="ck-to">Paid to</label>
+      <input id="ck-to" class="mono" placeholder="0x..." autocomplete="off" spellcheck="false">
+      <div class="err" id="ck-to-err"></div>
+    </div>
+
+    <dl class="cost">
+      <div class="row"><dt>A check costs</dt><dd>$0.01 in USD₮ or USDC</dd></div>
+      <div class="row"><dt>Gas</dt><dd>none, you only sign</dd></div>
+    </dl>
+
+    <div style="margin-top:16px">
+      <button class="primary" id="ck-go">Check for $0.01</button>
+    </div>
+
+    <div class="status" id="ck-status" role="status" aria-live="polite">
+      <div class="ic" id="ck-status-ic"></div>
+      <div><div class="msg" id="ck-status-msg"></div><div class="sub" id="ck-status-sub"></div></div>
+    </div>
+    <div id="ck-result" hidden></div>
+  </section>
+
   <section class="card" id="verify-card" data-panel="you" hidden>
     <div class="bal-label">Prove you are a person</div>
     <p class="why" id="v-intro">
@@ -547,6 +602,13 @@
       Kobo is not only a page. There is a <a href="/skill.md">skill file</a> and an
       MCP server at <span class="mono">/mcp</span>, so software can send naira,
       quote a rate or read a circle without a browser. Same rails, same contracts.
+    </p>
+    <p class="why">
+      One call is paid. <span class="mono">GET /v1/receipt/:hash</span> tells an
+      agent whether a payment really landed and paid who it should, for $0.01
+      over <strong>x402</strong> in USD₮ or USDC. The agent signs, the Celo
+      facilitator settles, and nobody needs gas. Prices are at
+      <a class="mono" href="/v1/paid">/v1/paid</a>.
     </p>
 
     <details style="margin-top:14px">
