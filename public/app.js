@@ -11,9 +11,11 @@ const short = (a) => `${a.slice(0, 6)}...${a.slice(-4)}`;
 const NAIRA = new Set(["NGNm", "cNGN"]);
 const shown = (s) => (s === "USDT" ? "USD₮" : s);
 // Fees on dollars are fractions of a cent, and two decimals would print them as zero.
-const money = (v, sym) => {
+const money = (v, sym, precise = false) => {
   const n = Number(v || 0);
-  const body = n > 0 && n < 0.01 ? n.toFixed(4) : fmt(n);
+  const body = precise || (n > 0 && n < 0.01)
+    ? n.toLocaleString("en-NG", { minimumFractionDigits: 2, maximumFractionDigits: 4 })
+    : fmt(n);
   return NAIRA.has(sym) ? `₦${body}` : `$${body}`;
 };
 const CHIPS = { naira: ["1000", "5000", "20000"], dollar: ["1", "5", "20"] };
@@ -312,8 +314,11 @@ async function refreshQuote() {
 
     $("q-arrives").textContent = `${money(q.arrives, token)} ${shown(token)}`;
     $("q-fee").textContent = `${money(q.estimatedFee, fee)} ${fee}`;
+    // A fee under a cent rounds away at two decimals, and the total would claim
+    // nothing was added to it.
+    const tiny = Number(q.estimatedFee) < 0.01;
     $("q-total").textContent = q.feeInSameToken
-      ? `${money(Number(q.amount) + Number(q.estimatedFee), token)} ${shown(token)}`
+      ? `${money(Number(q.amount) + Number(q.estimatedFee), token, tiny)} ${shown(token)}`
       : `${money(q.amount, token)} ${shown(token)} and ${money(q.estimatedFee, fee)} ${fee}`;
     $("quote").classList.add("on");
 

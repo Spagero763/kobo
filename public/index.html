@@ -132,14 +132,14 @@
   .chip:hover { border-color: color-mix(in srgb, var(--accent) 45%, var(--line)); color: var(--accent); background: var(--accent-soft); }
   .chip:active { transform: translateY(.5px); }
 
-  button.primary {
+  button.primary, a.primary {
     width: 100%; padding: 14px; font-size: 15.5px; font-weight: 580; font-family: inherit;
     color: var(--accent-ink); border: 0; border-radius: 13px; cursor: pointer;
     background: linear-gradient(180deg, color-mix(in srgb, var(--accent) 92%, #fff) 0%, var(--accent) 100%);
     box-shadow: 0 1px 2px rgba(18,122,69,.24), 0 6px 16px -8px rgba(18,122,69,.5);
     transition: filter .14s, transform .07s, box-shadow .14s;
   }
-  button.primary:hover:not(:disabled) { filter: brightness(1.06); }
+  button.primary:hover:not(:disabled), a.primary:hover { filter: brightness(1.06); }
   button.primary:active:not(:disabled) { transform: translateY(1px); box-shadow: 0 1px 2px rgba(18,122,69,.24); }
   button.primary:disabled { background: var(--line); color: var(--faint); box-shadow: none; cursor: not-allowed; }
 
@@ -277,10 +277,11 @@
       <button class="primary" id="connect">Connect wallet</button>
       <p class="why" id="why">
         Kobo never holds your money. You sign each transfer in your own wallet, so
-        the naira stays yours until it reaches whoever you sent it to.
+        the money stays yours until it reaches whoever you sent it to.
         <br><br>
-        Open this in <strong>MiniPay</strong> and it connects on its own. In a
-        desktop browser you need a Celo wallet such as MetaMask or Valora.
+        Inside <strong>MiniPay</strong> it connects on its own. Other Celo
+        wallets work too, but one that cannot pay fees in tokens, MetaMask
+        among them, will ask for a little CELO.
       </p>
     </div>
   </section>
@@ -304,13 +305,13 @@
         <a href="https://link.minipay.xyz/discover">Install it</a>.
       </li>
       <li>
-        <strong>Add a little money.</strong> Naira or dollars.
-        <a href="https://link.minipay.xyz/add_cash?tokens=USDT,USDC,USDM">Add cash in MiniPay</a>.
+        <strong>Add a little money.</strong> MiniPay holds dollars: USD₮, USDC
+        or USDm. <a href="https://link.minipay.xyz/add_cash?tokens=USDT,USDC,USDM">Add cash in MiniPay</a>.
       </li>
       <li>
-        <strong>Open Kobo in MiniPay and send.</strong> Paste their address, or
-        open the payment link they sent you. The fee comes out of what you
-        send, so you never need CELO.
+        <strong>Open Kobo in your wallet and send.</strong> Paste their address,
+        or open the payment link they sent you. The fee is paid in a token you
+        already hold, so in MiniPay you never need CELO.
       </li>
     </ol>
   </section>
@@ -769,7 +770,7 @@
   </section>
 
   <footer>
-    Gas is paid in naira. You never need CELO.<br>
+    Fees are paid in naira or dollars, never CELO, in wallets that support it.<br>
     <a href="https://github.com/Spagero763/kobo">Source</a> ·
     <a href="https://celoscan.io/address/0xdfcf531070a11c94464768547ff239e6bacf4b00">Contracts</a> ·
     Celo mainnet
