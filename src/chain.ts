@@ -123,9 +123,12 @@ export async function canPayGasWith(token: `0x${string}`): Promise<boolean> {
 /**
  * CIP-64 fee parameters for paying gas in an ERC-20.
  *
- * Two things make this awkward. The fee-currency gas price oracle lags the
- * block base fee, and the node rejects anything under the base fee, so the cap
- * is anchored on whichever is higher. And the node's estimator rejects these
+ * Two things make this awkward. The oracle answers with the base fee already
+ * converted into the fee token, so that is the anchor; the raw block base fee is
+ * in CELO and is only a fallback when the oracle does not answer. Taking the
+ * larger of the two looked right for naira, where the converted figure always
+ * wins, and quietly overpriced every dollar fee about twelve times over. And
+ * the node's estimator rejects these
  * transactions outright with "gas required exceeds allowance", because
  * allowance is balance divided by maxFeePerGas, so estimation is skipped and an
  * explicit limit passed. Unused gas is refunded.
@@ -139,7 +142,7 @@ export async function gasPrice(feeCurrency: `0x${string}`): Promise<{ anchor: bi
       .catch(() => 0n),
   ]);
   const base = block.baseFeePerGas ?? 0n;
-  const anchor = base > oracle ? base : oracle;
+  const anchor = oracle > 0n ? oracle : base;
   return { anchor, tip: anchor / 10n + 1n };
 }
 
