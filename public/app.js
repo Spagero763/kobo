@@ -21,6 +21,36 @@ const CHIPS = { naira: ["1000", "5000", "20000"], dollar: ["1", "5", "20"] };
 // fee ceiling so a Max send is never refused for the fee.
 const MARGIN = { NGNm: 10, USDT: 0.1, USDC: 0.1, USDm: 0.1 };
 
+/* Links carry a request or a proof. ?pay= fills the send form for whoever pays,
+   ?check= fills the payment check for whoever was paid. Anything malformed is
+   ignored rather than half applied. */
+const params = new URLSearchParams(location.search);
+const SYMBOLS = ["NGNm", "cNGN", "USDT", "USDC", "USDm"];
+const isAddr = (v) => /^0x[a-fA-F0-9]{40}$/.test(v ?? "");
+const isTx = (v) => /^0x[0-9a-fA-F]{64}$/.test(v ?? "");
+const linkToken = SYMBOLS.includes(params.get("token")) ? params.get("token") : "NGNm";
+const linkAmount = Number(params.get("amount")) > 0 ? params.get("amount") : "";
+const incoming = {
+  pay: isAddr(params.get("pay"))
+    ? { to: params.get("pay"), amount: linkAmount, token: linkToken, note: (params.get("note") ?? "").slice(0, 60) }
+    : null,
+  check: isTx(params.get("check")) ? { hash: params.get("check"), amount: linkAmount, token: linkToken } : null,
+};
+
+async function copy(text, btn, label) {
+  try {
+    await navigator.clipboard.writeText(text);
+  } catch {
+    const tmp = Object.assign(document.createElement("textarea"), { value: text });
+    document.body.append(tmp);
+    tmp.select();
+    document.execCommand("copy");
+    tmp.remove();
+  }
+  btn.textContent = "Copied";
+  setTimeout(() => (btn.textContent = label), 1600);
+}
+
 const state = { account: null, chainId: null, quote: null, feeInNaira: false, busy: false };
 
 /* Wallets differ on Celo's fee currency field, and the difference is not a
@@ -146,7 +176,10 @@ async function loadBalance() {
     el.textContent = fmt(balance);
     el.dataset.raw = balance;
     el.dataset.token = symbol;
+    // The add cash link only works inside MiniPay, so it is only offered there.
+    $("bal-empty").hidden = Number(balance) > 0 || !provider()?.isMiniPay;
   } catch {
+    $("bal-empty").hidden = true;
     el.textContent = "unavailable";
     el.dataset.raw = "";
     el.dataset.token = "";
@@ -204,10 +237,12 @@ async function connect() {
 
     $("addr").textContent = short(state.account);
     $("connect-wrap").hidden = true;
+    $("start-card").hidden = true;
     $("cost-card").hidden = true;
     $("proof-card").hidden = true;
     $("tabs").hidden = false;
     showTab("send");
+    applyIncoming();
     await loadBalance();
     showVerifyState();
 
@@ -369,7 +404,15 @@ async function submit() {
     }
 
     step(3);
-    status("ok", `${money(state.quote.amount, state.quote.token)} ${shown(state.quote.token)} sent.`, link);
+    // Proof they can open themselves beats a screenshot, which is exactly what
+    // a fake alert looks like.
+    const proof = `${location.origin}/?${new URLSearchParams({ check: hash, token: state.quote.token, amount: state.quote.amount })}`;
+    const said = `I have sent you ${money(state.quote.amount, state.quote.token)} ${shown(state.quote.token)}. Check it landed: ${proof}`;
+    status(
+      "ok",
+      `${money(state.quote.amount, state.quote.token)} ${shown(state.quote.token)} sent.`,
+      `${link} · <a href="https://wa.me/?text=${encodeURIComponent(said)}" target="_blank" rel="noopener">Send them proof on WhatsApp</a>`,
+    );
     $("amt").value = "";
     $("quote").classList.remove("on");
     await loadBalance();
@@ -452,10 +495,84 @@ if (p) {
   // MiniPay authorises the page already, so skip the connect step there.
   if (p.isMiniPay) connect();
 } else {
+  // No wallet in this browser. The start card offers the ways in, so a dead
+  // button would only be in the way.
   setNet("bad", "No wallet");
-  $("connect").textContent = "Open in MiniPay";
-  $("connect").disabled = true;
+  $("connect").hidden = true;
+  $("start-open").hidden = false;
+  $("start-minipay").href = `https://link.minipay.xyz/browse?url=${encodeURIComponent(location.href)}`;
+  $("start-copy").addEventListener("click", () => copy(location.href, $("start-copy"), "Copy link"));
+
+  // A phone camera is the quickest way from a laptop to a wallet.
+  if (matchMedia("(min-width: 700px)").matches) {
+    fetch(`/v1/qr?path=${encodeURIComponent(location.pathname + location.search)}`)
+      .then((r) => (r.ok ? r.json() : null))
+      .then((b) => {
+        if (!b) return;
+        $("start-qr").innerHTML = b.qr;
+        $("start-qr-wrap").hidden = false;
+      })
+      .catch(() => {});
+  }
 }
+
+function showIncoming() {
+  const r = incoming.pay;
+  if (!r) return;
+  $("req-card").hidden = false;
+  $("req-amount").textContent = r.amount
+    ? `${money(r.amount, r.token).replace(/\.00$/, "")} ${shown(r.token)}`
+    : `Any amount of ${shown(r.token)}`;
+  $("req-note").textContent = r.note ? `For ${r.note}` : "";
+  $("req-note").hidden = !r.note;
+  $("req-to").textContent = r.to;
+}
+
+function applyIncoming() {
+  if (incoming.pay) {
+    const r = incoming.pay;
+    $("token").value = r.token;
+    setChips();
+    $("to").value = r.to;
+    $("amt").value = r.amount;
+    showTab("send");
+    scheduleQuote();
+  } else if (incoming.check) {
+    showTab("check");
+    $("ck-hash").value = incoming.check.hash;
+    $("ck-token").value = incoming.check.token;
+    $("ck-amt").value = incoming.check.amount;
+  }
+}
+
+showIncoming();
+
+$("rq-make").addEventListener("click", async () => {
+  const amount = $("rq-amt").value.trim();
+  const token = $("rq-token").value;
+  const note = $("rq-note").value.trim();
+  $("rq-err").textContent = "";
+  if (amount && !(Number(amount) > 0)) {
+    $("rq-err").textContent = "Enter an amount greater than zero, or leave it empty.";
+    return;
+  }
+  try {
+    const q = new URLSearchParams({ to: state.account, token });
+    if (amount) q.set("amount", amount);
+    if (note) q.set("note", note);
+    const r = await fetch(`/v1/request?${q}`);
+    const b = await r.json();
+    if (!r.ok) throw new Error(b.error || "could not make the link");
+    $("rq-qr").innerHTML = b.qr;
+    $("rq-link").value = b.link;
+    $("rq-wa").href = `https://wa.me/?text=${encodeURIComponent(b.text)}`;
+    $("rq-out").hidden = false;
+  } catch (e) {
+    $("rq-err").textContent = e.message;
+  }
+});
+
+$("rq-copy").addEventListener("click", () => copy($("rq-link").value, $("rq-copy"), "Copy link"));
 
 /* Tabs. Everything below the balance lives in one of four panels, so the page
    shows one job at a time instead of a column of cards. */

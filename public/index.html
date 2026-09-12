@@ -115,6 +115,11 @@
   input[aria-invalid="true"]:focus { box-shadow: 0 0 0 3.5px color-mix(in srgb, var(--danger) 13%, transparent); }
   .field { margin-bottom: 15px; }
   .pair { display: grid; grid-template-columns: 1fr 7.5rem; gap: 8px; }
+  #req-card { border-color: color-mix(in srgb, var(--accent) 38%, var(--line)); }
+  .steps-list { margin: 12px 0 0; padding-left: 20px; font-size: 13.5px; line-height: 1.6; color: var(--muted); }
+  .steps-list li { margin: 7px 0; }
+  .steps-list strong { color: var(--ink); font-weight: 600; }
+  .qr.small { max-width: 220px; margin-left: auto; margin-right: auto; }
   .err { font-size: 12.5px; color: var(--danger); margin-top: 6px; min-height: 1em; }
 
   .chips { display: flex; gap: 7px; margin-top: 9px; flex-wrap: wrap; }
@@ -248,10 +253,26 @@
 
 <main class="wrap">
 
+  <section class="card" id="req-card" hidden>
+    <div class="bal-label">Payment request</div>
+    <div class="bal" id="req-amount"></div>
+    <p class="why" id="req-note" hidden></p>
+    <p class="why">To <span class="mono" id="req-to"></span></p>
+    <p class="why">
+      Connect and the send form fills itself in. Check the address matches the
+      one they gave you before you sign.
+    </p>
+  </section>
+
   <section class="card" aria-labelledby="bal-label">
-    <div class="bal-label" id="bal-label">Your naira</div>
+    <div class="bal-label" id="bal-label">Your balance</div>
     <div class="bal"><span id="bal" class="skel">000,000.00</span><small id="bal-unit">NGNm</small></div>
     <div class="addr" id="addr">Not connected</div>
+    <p class="why" id="bal-empty" hidden>
+      Nothing in this wallet to send yet.
+      <a href="https://link.minipay.xyz/add_cash?tokens=USDT,USDC,USDM">Add cash in MiniPay</a>,
+      then come back.
+    </p>
     <div id="connect-wrap" style="margin-top:14px">
       <button class="primary" id="connect">Connect wallet</button>
       <p class="why" id="why">
@@ -262,6 +283,36 @@
         desktop browser you need a Celo wallet such as MetaMask or Valora.
       </p>
     </div>
+  </section>
+
+  <section class="card" id="start-card">
+    <div class="bal-label">New here? Three steps</div>
+    <div id="start-open" hidden>
+      <a class="primary" id="start-minipay" href="https://link.minipay.xyz/discover">Open in MiniPay</a>
+      <div id="start-qr-wrap" hidden>
+        <div class="qr small" id="start-qr"></div>
+        <p class="why" style="text-align:center">Or scan this with your phone camera.</p>
+      </div>
+      <p class="why">
+        Using Valora or another Celo wallet? Open this page in its browser.
+        <button class="chip" id="start-copy">Copy link</button>
+      </p>
+    </div>
+    <ol class="steps-list">
+      <li>
+        <strong>Get MiniPay.</strong> A free stablecoin wallet from Opera.
+        <a href="https://link.minipay.xyz/discover">Install it</a>.
+      </li>
+      <li>
+        <strong>Add a little money.</strong> Naira or dollars.
+        <a href="https://link.minipay.xyz/add_cash?tokens=USDT,USDC,USDM">Add cash in MiniPay</a>.
+      </li>
+      <li>
+        <strong>Open Kobo in MiniPay and send.</strong> Paste their address, or
+        open the payment link they sent you. The fee comes out of what you
+        send, so you never need CELO.
+      </li>
+    </ol>
   </section>
 
   <!-- Shown before any wallet exists. Two reviewers independently said they
@@ -282,8 +333,9 @@
     <p class="why">
       Your balance is shown as <strong>NGNm</strong>, which is naira. It is the
       Mento naira on Celo, and one NGNm is one naira. Kobo also sends
-      <strong>cNGN</strong>, the SEC-regulated naira, and takes the fee in NGNm
-      either way because cNGN cannot pay for its own gas.
+      <strong>cNGN</strong>, the SEC-regulated naira, whose fee comes out of
+      NGNm or dollars you hold because cNGN cannot pay for its own gas, and
+      <strong>USD₮, USDC and USDm</strong>, which pay their own.
     </p>
   </section>
 
@@ -335,7 +387,7 @@
     <button role="tab" data-tab="send" aria-selected="true">Send</button>
     <button role="tab" data-tab="abroad" aria-selected="false">Abroad</button>
     <button role="tab" data-tab="circles" aria-selected="false">Circles</button>
-    <button role="tab" data-tab="check" aria-selected="false">Check</button>
+    <button role="tab" data-tab="check" aria-selected="false">Get paid</button>
     <button role="tab" data-tab="you" aria-selected="false">You</button>
   </nav>
 
@@ -516,7 +568,43 @@
   </section>
 
   <section class="card" data-panel="check" hidden>
-    <p class="lede">
+    <div class="bal-label">Ask for money</div>
+    <p class="why" style="margin:6px 0 14px">
+      Make a link and QR code with your address and the amount already filled
+      in. Whoever pays opens it and taps Send.
+    </p>
+
+    <div class="field">
+      <label for="rq-amt">Amount</label>
+      <div class="pair">
+        <input id="rq-amt" type="text" inputmode="decimal" placeholder="5000" autocomplete="off">
+        <select id="rq-token">
+          <option value="NGNm">NGNm</option>
+          <option value="cNGN">cNGN</option>
+          <option value="USDT">USD₮</option>
+          <option value="USDC">USDC</option>
+          <option value="USDm">USDm</option>
+        </select>
+      </div>
+      <div class="err" id="rq-err"></div>
+    </div>
+
+    <div class="field">
+      <label for="rq-note">What it is for, optional</label>
+      <input id="rq-note" maxlength="60" placeholder="2 bags of rice" autocomplete="off">
+    </div>
+
+    <button class="primary" id="rq-make">Create payment link</button>
+
+    <div id="rq-out" hidden>
+      <div class="qr small" id="rq-qr"></div>
+      <input id="rq-link" class="mono" readonly style="margin-top:12px">
+      <div class="chips"><button class="chip" id="rq-copy">Copy link</button></div>
+      <a class="primary" id="rq-wa" href="#" target="_blank" rel="noopener">Share on WhatsApp</a>
+    </div>
+
+    <div class="bal-label" style="margin-top:28px">Check a payment</div>
+    <p class="lede" style="margin-top:6px">
       Someone says they paid you. Check before you hand anything over. A
       screenshot or an SMS alert can be faked, a transaction on Celo cannot, and
       only the real naira and dollar contracts count here, so a look-alike token
