@@ -119,6 +119,17 @@ than a token. That is correct: USD₮ and USDC pay gas through adapters. Read
 `feeCurrency` and `feeInSameToken` in the quote before telling someone what
 leaves their balance.
 
+## Ask someone to pay
+
+```bash
+curl "https://kobo-gamma.vercel.app/v1/request?to=0xYou&amount=5000&token=NGNm&note=rice"
+```
+
+Returns `link`, a `text` ready to paste into a chat, an SVG `qr`, and a
+`minipay` deeplink. Whoever opens the link finds the send form already filled
+in and only has to sign. Nothing is stored; the request is the link. `amount`
+and `note` are optional.
+
 ## Check a payment landed (paid, x402)
 
 Before releasing goods or marking an invoice paid, check the chain rather than a

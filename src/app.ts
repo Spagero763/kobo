@@ -287,6 +287,55 @@ export function createApp() {
     }
   });
 
+  const originOf = (req: Request) =>
+    `${(req.get("x-forwarded-proto") ?? req.protocol).split(",")[0]}://${req.get("host")}`;
+
+  // A payment request is only a link with the send form filled in. Nothing is
+  // stored, so there is nothing to look up, expire or leak.
+  app.get("/v1/request", async (req: Request, res: Response) => {
+    try {
+      const { to, amount, token, note } = req.query as Record<string, string | undefined>;
+      if (!to || !isAddress(to)) throw new Error("to must be a valid address");
+      const t = tokenBySymbol(token || "NGNm");
+      if (!t) throw new Error(unknown(String(token)));
+      if (amount && !(/^\d*\.?\d+$/.test(amount) && Number(amount) > 0)) {
+        throw new Error("amount must be a number greater than zero, or left out");
+      }
+      const clean = (note ?? "").replace(/[ -<>]/g, "").trim().slice(0, 60);
+
+      const q = new URLSearchParams({ pay: to, token: t.symbol });
+      if (amount) q.set("amount", amount);
+      if (clean) q.set("note", clean);
+      const link = `${originOf(req)}/?${q}`;
+      const shown = Number(amount).toLocaleString("en-NG", { maximumFractionDigits: t.decimals });
+      const what = amount ? `${t.kind === "naira" ? "₦" : "$"}${shown} in ${t.symbol}` : t.symbol;
+
+      res.json({
+        link,
+        minipay: `https://link.minipay.xyz/browse?url=${encodeURIComponent(link)}`,
+        text: `Pay me ${what}${clean ? ` for ${clean}` : ""} on Kobo: ${link}`,
+        qr: await toString(link, { type: "svg", margin: 1, errorCorrectionLevel: "M" }),
+      });
+    } catch (e) {
+      fail(res, e);
+    }
+  });
+
+  // For a desktop visitor to carry this page to their phone. Only paths on this
+  // site, so it cannot be used to put someone else's link behind Kobo's name.
+  app.get("/v1/qr", async (req: Request, res: Response) => {
+    try {
+      const path = String(req.query.path ?? "/");
+      if (!path.startsWith("/") || path.startsWith("//") || path.length > 500) {
+        throw new Error("path must be a path on this site");
+      }
+      const url = `${originOf(req)}${path}`;
+      res.json({ url, qr: await toString(url, { type: "svg", margin: 1, errorCorrectionLevel: "M" }) });
+    } catch (e) {
+      fail(res, e);
+    }
+  });
+
   app.get("/v1/paid", (_req: Request, res: Response) => {
     res.json({
       protocol: "x402",
