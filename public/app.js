@@ -505,7 +505,6 @@ if (p) {
   setNet("bad", "No wallet");
   $("connect").hidden = true;
   $("start-open").hidden = false;
-  $("start-minipay").href = `https://link.minipay.xyz/browse?url=${encodeURIComponent(location.href)}`;
   $("start-copy").addEventListener("click", () => copy(location.href, $("start-copy"), "Copy link"));
 
   // A phone camera is the quickest way from a laptop to a wallet.
@@ -557,6 +556,11 @@ $("rq-make").addEventListener("click", async () => {
   const token = $("rq-token").value;
   const note = $("rq-note").value.trim();
   $("rq-err").textContent = "";
+  if (!state.account) {
+    $("rq-err").textContent = "Connect your wallet first, so the link points to you.";
+    if (provider()) connect();
+    return;
+  }
   if (amount && !(Number(amount) > 0)) {
     $("rq-err").textContent = "Enter an amount greater than zero, or leave it empty.";
     return;

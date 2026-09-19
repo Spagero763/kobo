@@ -4,15 +4,15 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <title>Kobo: send naira onchain without holding CELO</title>
-<meta name="description" content="Send Nigerian naira on Celo and pay the network fee in naira too. No CELO, no second balance. Works in MiniPay. Supports NGNm and cNGN.">
+<meta name="description" content="Send naira or dollar stablecoins on Celo and pay the network fee out of the same token, so you never hold CELO. Works in MiniPay. NGNm, cNGN, USDT, USDC and USDm.">
 <link rel="canonical" href="https://kobo-gamma.vercel.app/">
 <meta name="theme-color" content="#f7f6f3">
 
 <meta property="og:type" content="website">
 <meta property="og:site_name" content="Kobo">
 <meta property="og:url" content="https://kobo-gamma.vercel.app/">
-<meta property="og:title" content="Send naira onchain without holding CELO">
-<meta property="og:description" content="The network fee comes out of the naira too, so you need one asset and one balance. Works in MiniPay. NGNm and cNGN, on Celo mainnet.">
+<meta property="og:title" content="Send money onchain, in naira or dollars">
+<meta property="og:description" content="Kobo moves naira and dollar stablecoins on Celo, with the network fee paid out of the same token. One balance, no CELO. Works in MiniPay.">
 <meta property="og:image" content="https://kobo-gamma.vercel.app/og.png">
 <meta property="og:image:width" content="1200">
 <meta property="og:image:height" content="630">
@@ -20,8 +20,8 @@
 <meta property="og:locale" content="en_NG">
 
 <meta name="twitter:card" content="summary_large_image">
-<meta name="twitter:title" content="Send naira onchain without holding CELO">
-<meta name="twitter:description" content="The network fee comes out of the naira too, so you need one asset and one balance. Works in MiniPay. NGNm and cNGN, on Celo mainnet.">
+<meta name="twitter:title" content="Send money onchain, in naira or dollars">
+<meta name="twitter:description" content="Kobo moves naira and dollar stablecoins on Celo, with the network fee paid out of the same token. One balance, no CELO. Works in MiniPay.">
 <meta name="twitter:image" content="https://kobo-gamma.vercel.app/og.png">
 <meta name="twitter:image:alt" content="Kobo. Send naira onchain without holding CELO.">
 <meta name="twitter:creator" content="@Spagero71">
@@ -94,6 +94,12 @@
     font-size: 12px; color: var(--faint); margin-top: 8px;
     font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
   }
+
+  .hero { margin-top: 20px; }
+  .hero h1 { font-size: 27px; line-height: 1.14; letter-spacing: -.038em; font-weight: 690; margin: 0; }
+  .hero .lead { color: var(--muted); font-size: 14.5px; line-height: 1.55; margin: 11px 0 0; }
+  .hero .vs { color: var(--faint); font-size: 13px; line-height: 1.55; margin: 9px 0 0; }
+  .hero .vs strong { color: var(--muted); font-weight: 580; }
 
   .skel { display: inline-block; border-radius: 6px; background: linear-gradient(90deg, var(--line) 25%, color-mix(in srgb, var(--line) 45%, transparent) 50%, var(--line) 75%); background-size: 200% 100%; animation: sh 1.1s linear infinite; color: transparent !important; }
   @keyframes sh { to { background-position: -200% 0; } }
@@ -253,6 +259,20 @@
 
 <main class="wrap">
 
+  <div class="hero">
+    <h1>Send money onchain, in naira or dollars</h1>
+    <p class="lead">
+      Kobo moves NGNm and dollar stablecoins on Celo. The network fee comes out
+      of the token you send, so one balance is enough and you never hold CELO.
+    </p>
+    <p class="vs">
+      <strong>MiniPay is the wallet. Kobo adds what a wallet does not:</strong>
+      send naira itself, not only dollars, share a payment link that carries an
+      onchain receipt anyone can verify, run a savings circle, and let an app or
+      agent pay and check on its own.
+    </p>
+  </div>
+
   <section class="card" id="req-card" hidden>
     <div class="bal-label">Payment request</div>
     <div class="bal" id="req-amount"></div>
@@ -289,15 +309,16 @@
   <section class="card" id="start-card">
     <div class="bal-label">New here? Three steps</div>
     <div id="start-open" hidden>
-      <a class="primary" id="start-minipay" href="https://link.minipay.xyz/discover">Open in MiniPay</a>
+      <p class="why" style="margin-top:0">
+        Open the MiniPay app, go to its site browser, and paste this link. Kobo
+        connects on its own once it loads there. The same works in Valora or any
+        Celo wallet with a browser.
+      </p>
+      <button class="primary" id="start-copy">Copy link</button>
       <div id="start-qr-wrap" hidden>
         <div class="qr small" id="start-qr"></div>
-        <p class="why" style="text-align:center">Or scan this with your phone camera.</p>
+        <p class="why" style="text-align:center">On a laptop? Scan this to open Kobo on your phone.</p>
       </div>
-      <p class="why">
-        Using Valora or another Celo wallet? Open this page in its browser.
-        <button class="chip" id="start-copy">Copy link</button>
-      </p>
     </div>
     <ol class="steps-list">
       <li>
