@@ -100,6 +100,12 @@
   .hero .lead { color: var(--muted); font-size: 14.5px; line-height: 1.55; margin: 11px 0 0; }
   .hero .vs { color: var(--faint); font-size: 13px; line-height: 1.55; margin: 9px 0 0; }
   .hero .vs strong { color: var(--muted); font-weight: 580; }
+  .marks { display: flex; flex-wrap: wrap; gap: 7px; margin-top: 13px; }
+  .marks span {
+    font-size: 12px; font-weight: 540; color: var(--accent);
+    background: var(--accent-soft); border: 1px solid color-mix(in srgb, var(--accent) 22%, var(--line));
+    border-radius: 999px; padding: 5px 11px; letter-spacing: -.01em;
+  }
 
   .skel { display: inline-block; border-radius: 6px; background: linear-gradient(90deg, var(--line) 25%, color-mix(in srgb, var(--line) 45%, transparent) 50%, var(--line) 75%); background-size: 200% 100%; animation: sh 1.1s linear infinite; color: transparent !important; }
   @keyframes sh { to { background-position: -200% 0; } }
@@ -271,6 +277,11 @@
       onchain receipt anyone can verify, run a savings circle, and let an app or
       agent pay and check on its own.
     </p>
+    <div class="marks">
+      <span>Fee abstraction</span>
+      <span>Self personhood</span>
+      <span>x402 + MCP</span>
+    </div>
   </div>
 
   <section class="card" id="req-card" hidden>
